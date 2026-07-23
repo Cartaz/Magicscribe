@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <g transform="translate(256, 256) scale(1.43) translate(-256, -227)">
+    <defs>
+      <linearGradient id="bezelGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#3a4a5c"/>
+        <stop offset="100%" stop-color="#2c3e50"/>
+      </linearGradient>
+      <linearGradient id="screenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#1a1a2e"/>
+        <stop offset="100%" stop-color="#0d0d1a"/>
+      </linearGradient>
+      <linearGradient id="standGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#c0c8d0"/>
+        <stop offset="50%" stop-color="#b0bec5"/>
+        <stop offset="100%" stop-color="#90a0aa"/>
+      </linearGradient>
+      <linearGradient id="baseGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#b0bec5"/>
+        <stop offset="100%" stop-color="#8090a0"/>
+      </linearGradient>
+      <linearGradient id="pinkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#E91E63"/>
+        <stop offset="100%" stop-color="#AD1457"/>
+      </linearGradient>
+      <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#9C27B0"/>
+        <stop offset="100%" stop-color="#7B1FA2"/>
+      </linearGradient>
+      <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#3F51B5"/>
+        <stop offset="100%" stop-color="#303F9F"/>
+      </linearGradient>
+      <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#FF9800"/>
+        <stop offset="100%" stop-color="#F57C00"/>
+      </linearGradient>
+      <linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#F44336"/>
+        <stop offset="100%" stop-color="#D32F2F"/>
+      </linearGradient>
+      <linearGradient id="penBody" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#333"/>
+        <stop offset="30%" stop-color="#212121"/>
+        <stop offset="70%" stop-color="#212121"/>
+        <stop offset="100%" stop-color="#333"/>
+      </linearGradient>
+      <linearGradient id="penSilver" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#e8e8e8"/>
+        <stop offset="50%" stop-color="#d0d0d0"/>
+        <stop offset="100%" stop-color="#a0a0a0"/>
+      </linearGradient>
+      <linearGradient id="penGrip" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#444"/>
+        <stop offset="30%" stop-color="#333"/>
+        <stop offset="70%" stop-color="#333"/>
+        <stop offset="100%" stop-color="#444"/>
+      </linearGradient>
+      <clipPath id="screenClip">
+        <rect x="104" y="96" width="304" height="220" rx="6"/>
+      </clipPath>
+    </defs>
+
+    <!-- Monitor body -->
+    <rect x="88" y="80" width="336" height="248" rx="14" fill="url(#bezelGrad)"/>
+    <rect x="104" y="96" width="304" height="220" rx="6" fill="url(#screenGrad)"/>
+
+    <!-- Artwork on screen -->
+    <g clip-path="url(#screenClip)">
+      <rect x="104" y="96" width="304" height="220" fill="#141428" opacity="0.8"/>
+      <rect x="104" y="96" width="304" height="220" fill="rgba(156,39,176,0.04)"/>
+
+      <!-- Pink swirl top-left -->
+      <path d="M 130 110 C 150 105, 180 115, 190 130 C 200 145, 185 160, 170 155 C 155 150, 160 135, 175 130"
+            stroke="url(#pinkGrad)" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/>
+      <!-- Purple curve top -->
+      <path d="M 120 125 C 160 105, 220 108, 260 120 C 300 132, 340 115, 380 125"
+            stroke="url(#purpleGrad)" stroke-width="3.5" fill="none" stroke-linecap="round" opacity="0.8"/>
+      <!-- Blue stroke top-right -->
+      <path d="M 300 110 C 320 100, 360 105, 390 115 C 400 120, 395 135, 380 130"
+            stroke="url(#blueGrad)" stroke-width="3.5" fill="none" stroke-linecap="round" opacity="0.8"/>
+      <!-- Orange line top -->
+      <path d="M 140 140 C 180 132, 240 138, 290 130 C 340 122, 370 128, 395 135"
+            stroke="url(#orangeGrad)" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6"/>
+      <!-- Red accent top -->
+      <path d="M 210 108 C 230 100, 260 105, 275 118"
+            stroke="url(#redGrad)" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+
+      <!-- Large pink central swirl -->
+      <path d="M 180 200 C 160 160, 220 130, 260 160 C 300 190, 280 240, 240 240 C 200 240, 190 210, 210 190 C 230 170, 270 180, 270 210 C 270 230, 250 245, 235 235"
+            stroke="url(#pinkGrad)" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.9"/>
+      <!-- Purple flowing curve -->
+      <path d="M 240 160 C 280 130, 330 150, 350 180 C 370 210, 340 240, 310 230"
+            stroke="url(#purpleGrad)" stroke-width="4.5" fill="none" stroke-linecap="round" opacity="0.85"/>
+      <!-- Blue curve flowing left -->
+      <path d="M 180 200 C 150 220, 120 200, 115 170 C 110 140, 140 120, 170 130"
+            stroke="url(#blueGrad)" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/>
+      <!-- Pink curve right -->
+      <path d="M 320 145 C 345 135, 370 150, 385 170 C 395 185, 385 200, 370 195"
+            stroke="url(#pinkGrad)" stroke-width="3.5" fill="none" stroke-linecap="round" opacity="0.8"/>
+      <!-- Blue right side -->
+      <path d="M 350 160 C 370 145, 395 155, 398 175 C 400 195, 385 210, 370 200"
+            stroke="url(#blueGrad)" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/>
+      <!-- Purple right side -->
+      <path d="M 340 220 C 360 210, 385 225, 390 245 C 392 260, 380 275, 365 265"
+            stroke="url(#purpleGrad)" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.7"/>
+      <!-- Red accent right -->
+      <path d="M 370 180 C 385 170, 400 180, 398 195"
+            stroke="url(#redGrad)" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+      <!-- Red accent stroke -->
+      <path d="M 300 170 C 320 150, 350 155, 360 175"
+            stroke="url(#redGrad)" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.75"/>
+
+      <!-- Orange thin lines lower -->
+      <path d="M 130 260 C 170 240, 220 250, 260 235 C 300 220, 340 230, 370 215"
+            stroke="url(#orangeGrad)" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+      <path d="M 140 270 C 180 255, 230 260, 270 250"
+            stroke="url(#orangeGrad)" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.5"/>
+      <path d="M 280 270 C 310 260, 350 265, 380 255 C 395 250, 398 240, 390 235"
+            stroke="url(#orangeGrad)" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.5"/>
+
+      <!-- Dots -->
+      <circle cx="140" cy="115" r="2.5" fill="#E91E63" opacity="0.65"/>
+      <circle cx="250" cy="108" r="2" fill="#9C27B0" opacity="0.6"/>
+      <circle cx="340" cy="112" r="2.5" fill="#3F51B5" opacity="0.55"/>
+      <circle cx="380" cy="120" r="1.8" fill="#FF9800" opacity="0.5"/>
+      <circle cx="165" cy="128" r="2" fill="#F44336" opacity="0.5"/>
+      <circle cx="310" cy="105" r="1.5" fill="#E91E63" opacity="0.45"/>
+      <circle cx="200" cy="120" r="2.2" fill="#9C27B0" opacity="0.5"/>
+      <circle cx="130" cy="105" r="2" fill="#9C27B0" opacity="0.5"/>
+      <circle cx="395" cy="108" r="1.8" fill="#3F51B5" opacity="0.5"/>
+      <circle cx="200" cy="150" r="3" fill="#E91E63" opacity="0.7"/>
+      <circle cx="330" cy="200" r="2.5" fill="#9C27B0" opacity="0.6"/>
+      <circle cx="150" cy="180" r="2" fill="#3F51B5" opacity="0.65"/>
+      <circle cx="130" cy="140" r="1.8" fill="#E91E63" opacity="0.5"/>
+      <circle cx="310" cy="130" r="2" fill="#9C27B0" opacity="0.45"/>
+      <circle cx="390" cy="150" r="2" fill="#E91E63" opacity="0.55"/>
+      <circle cx="395" cy="220" r="2.5" fill="#3F51B5" opacity="0.5"/>
+      <circle cx="380" cy="265" r="2" fill="#FF9800" opacity="0.5"/>
+      <circle cx="280" cy="260" r="2.5" fill="#FF9800" opacity="0.55"/>
+      <circle cx="350" cy="240" r="2" fill="#F44336" opacity="0.5"/>
+      <circle cx="160" cy="260" r="2" fill="#9C27B0" opacity="0.4"/>
+      <circle cx="120" cy="250" r="1.5" fill="#E91E63" opacity="0.4"/>
+      <circle cx="220" cy="110" r="1.5" fill="#3F51B5" opacity="0.4"/>
+      <circle cx="290" cy="145" r="2" fill="#E91E63" opacity="0.5"/>
+      <circle cx="360" cy="135" r="1.8" fill="#F44336" opacity="0.45"/>
+      <circle cx="245" cy="280" r="2" fill="#9C27B0" opacity="0.4"/>
+      <circle cx="325" cy="270" r="1.5" fill="#3F51B5" opacity="0.35"/>
+
+      <!-- Organic shapes -->
+      <ellipse cx="180" cy="118" rx="22" ry="10" fill="#E91E63" opacity="0.1" transform="rotate(-10, 180, 118)"/>
+      <ellipse cx="340" cy="115" rx="20" ry="9" fill="#3F51B5" opacity="0.08" transform="rotate(15, 340, 115)"/>
+      <ellipse cx="220" cy="190" rx="25" ry="15" fill="#E91E63" opacity="0.12" transform="rotate(-15, 220, 190)"/>
+      <ellipse cx="300" cy="200" rx="20" ry="12" fill="#9C27B0" opacity="0.1" transform="rotate(20, 300, 200)"/>
+      <ellipse cx="170" cy="170" rx="18" ry="10" fill="#3F51B5" opacity="0.1" transform="rotate(-25, 170, 170)"/>
+      <ellipse cx="375" cy="185" rx="15" ry="20" fill="#9C27B0" opacity="0.08" transform="rotate(10, 375, 185)"/>
+      <ellipse cx="370" cy="250" rx="14" ry="10" fill="#FF9800" opacity="0.07" transform="rotate(-5, 370, 250)"/>
+      <ellipse cx="250" cy="270" rx="30" ry="10" fill="#E91E63" opacity="0.06"/>
+    </g>
+
+    <!-- Screen reflection -->
+    <rect x="104" y="96" width="304" height="80" rx="6" fill="rgba(255,255,255,0.05)"/>
+    <!-- Screen border -->
+    <rect x="104" y="96" width="304" height="220" rx="6" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+
+    <!-- Monitor chin -->
+    <rect x="88" y="312" width="336" height="16" fill="url(#bezelGrad)"/>
+    <!-- Power indicator -->
+    <circle cx="256" cy="320" r="4" fill="#4a5568" stroke="#5a6578" stroke-width="0.5"/>
+    <circle cx="256" cy="320" r="2" fill="#7a8a9a" opacity="0.5"/>
+
+    <!-- Monitor stand neck -->
+    <rect x="230" y="328" width="52" height="30" rx="2" fill="url(#standGrad)"/>
+    <!-- Monitor stand base -->
+    <ellipse cx="256" cy="362" rx="70" ry="12" fill="url(#baseGrad)"/>
+
+    <!-- Pen/Stylus -->
+    <g transform="translate(330, 105) rotate(50)">
+      <rect x="-5" y="-8" width="140" height="16" rx="5" fill="url(#penBody)"/>
+      <rect x="30" y="-8" width="40" height="16" rx="2" fill="url(#penGrip)"/>
+      <line x1="35" y1="-6" x2="35" y2="6" stroke="#555" stroke-width="0.8" opacity="0.4"/>
+      <line x1="39" y1="-6" x2="39" y2="6" stroke="#555" stroke-width="0.8" opacity="0.4"/>
+      <line x1="43" y1="-6" x2="43" y2="6" stroke="#555" stroke-width="0.8" opacity="0.4"/>
+      <line x1="47" y1="-6" x2="47" y2="6" stroke="#555" stroke-width="0.8" opacity="0.4"/>
+      <line x1="51" y1="-6" x2="51" y2="6" stroke="#555" stroke-width="0.8" opacity="0.4"/>
+      <line x1="55" y1="-6" x2="55" y2="6" stroke="#555" stroke-width="0.8" opacity="0.4"/>
+      <line x1="59" y1="-6" x2="59" y2="6" stroke="#555" stroke-width="0.8" opacity="0.4"/>
+      <line x1="63" y1="-6" x2="63" y2="6" stroke="#555" stroke-width="0.8" opacity="0.4"/>
+      <line x1="67" y1="-6" x2="67" y2="6" stroke="#555" stroke-width="0.8" opacity="0.4"/>
+      <rect x="100" y="-9" width="8" height="18" rx="1.5" fill="url(#penSilver)"/>
+      <polygon points="108,-5 108,5 128,0" fill="#555"/>
+      <polygon points="124,-2 124,2 132,0" fill="#b0b0b0"/>
+      <rect x="-12" y="-7" width="10" height="14" rx="4" fill="#333"/>
+      <rect x="115" y="-11" width="3" height="22" rx="1" fill="url(#penSilver)"/>
+      <rect x="0" y="-7" width="135" height="4" rx="3" fill="rgba(255,255,255,0.08)"/>
+      <rect x="75" y="-9" width="12" height="5" rx="2" fill="#444" stroke="#555" stroke-width="0.5"/>
+    </g>
+  </g>
+</svg>
