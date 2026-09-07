@@ -16,10 +16,10 @@ jobs:
       QT_QPA_PLATFORM: offscreen
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -38,14 +38,16 @@ jobs:
         run: |
           python - <<'PY'
           from PySide6.QtCore import qVersion
+          from PySide6.QtDBus import QDBusConnection
           from PySide6.QtQml import QQmlApplicationEngine
           from PySide6.QtWidgets import QApplication
 
           version = tuple(int(part) for part in qVersion().split(".")[:3])
           assert version >= (6, 11, 0), qVersion()
+          assert QDBusConnection is not None
           assert QQmlApplicationEngine is not None
           assert QApplication is not None
-          print(f"Qt {qVersion()} / PySide6 runtime OK")
+          print(f"Qt {qVersion()} / PySide6 runtime OK (QtDBus available)")
           PY
 
       - name: Validate installer syntax

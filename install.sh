@@ -65,6 +65,7 @@ echo "     Dipendenze installate."
 echo "[3/7] Verifica runtime PySide6/Qt..."
 "${VENV_DIR}/bin/python" - <<'PY'
 from PySide6.QtCore import qVersion
+from PySide6.QtDBus import QDBusConnection
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
 
@@ -72,9 +73,10 @@ version = tuple(int(part) for part in qVersion().split(".")[:3])
 if version < (6, 11, 0):
     raise SystemExit(f"Qt 6.11+ richiesto, trovato {qVersion()}")
 
+assert QDBusConnection is not None
 assert QQmlApplicationEngine is not None
 assert QApplication is not None
-print(f"     PySide6/Qt {qVersion()} OK")
+print(f"     PySide6/Qt {qVersion()} OK (QtDBus disponibile)")
 PY
 
 # 4. Verifica modulo QML
