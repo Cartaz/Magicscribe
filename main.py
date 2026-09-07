@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """MagicScribe — bootstrap dell'applicazione.
 
-M3 usa un pannello Qt Quick/QML sopra il core Python/PySide6, mantenendo
+M4 usa Qt Quick/QML per pannello di controllo e floating palette, mantenendo
 l'overlay QWidget/QPainter legacy finche' la parita' del workflow di disegno
 non sara' verificata. main.py resta limitato a wiring e lifecycle.
 """
@@ -25,7 +25,7 @@ if _is_wayland and not os.environ.get("QT_QPA_PLATFORM"):
 
 from PySide6.QtCore import QTimer, QSize
 from PySide6.QtGui import QIcon, QWindow
-from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
 
@@ -93,6 +93,35 @@ def _set_application_icon(app: QApplication, app_dir: Path) -> None:
         app.setWindowIcon(QIcon(str(svg_path)))
 
 
+def _create_floating_palette(
+    engine: QQmlApplicationEngine,
+    drawing_adapter: DrawingAdapter,
+    shell_adapter: ShellAdapter,
+    logger: logging.Logger,
+) -> tuple[QQmlComponent, QWindow]:
+    """Istanzia la seconda top-level window QML con dipendenze esplicite."""
+    component = QQmlComponent(engine)
+    component.loadFromModule("MagicScribe", "FloatingPalette")
+
+    if not component.isReady():
+        for error in component.errors():
+            logger.critical("Errore QML FloatingPalette: %s", error.toString())
+        raise SystemExit(1)
+
+    obj = component.createWithInitialProperties({
+        "drawingAdapter": drawing_adapter,
+        "shellAdapter": shell_adapter,
+    })
+    if not isinstance(obj, QWindow):
+        for error in component.errors():
+            logger.critical("Errore creazione FloatingPalette: %s", error.toString())
+        if obj is not None:
+            obj.deleteLater()
+        raise SystemExit(1)
+
+    return component, obj
+
+
 def main() -> None:
     """Crea servizi, adapter, shell Qt/QML e avvia l'event loop."""
     _setup_logging()
@@ -114,8 +143,8 @@ def main() -> None:
     app_dir = Path(__file__).resolve().parent
     _set_application_icon(app, app_dir)
 
-    # QSS resta temporaneamente per i componenti QWidget legacy (overlay,
-    # floating icon, tray). Il pannello QML usa esclusivamente Theme.qml.
+    # QSS resta temporaneamente per il codice QWidget legacy ancora presente.
+    # Le due finestre runtime della shell usano esclusivamente Theme.qml.
     app.setStyleSheet(build_stylesheet())
 
     settings = Settings(
@@ -158,7 +187,14 @@ def main() -> None:
         raise SystemExit(1)
 
     control_window = roots[0]
+    floating_component, floating_window = _create_floating_palette(
+        engine,
+        drawing_adapter,
+        shell_adapter,
+        logger,
+    )
     window_coordinator.set_control_window(control_window)
+    window_coordinator.set_floating_window(floating_window)
 
     tray = TrayIcon(controller, window_coordinator.restore_control_panel)
 
@@ -170,6 +206,8 @@ def main() -> None:
     # Mantiene riferimenti espliciti agli oggetti con lifecycle applicativo.
     runtime_refs = (
         engine,
+        floating_component,
+        floating_window,
         drawing_adapter,
         tool_adapter,
         tool_model,
@@ -180,7 +218,7 @@ def main() -> None:
     )
     del runtime_refs  # i local restano vivi fino al ritorno da app.exec()
 
-    logger.info("Applicazione avviata con pannello QML")
+    logger.info("Applicazione avviata con shell QML")
     exit_code = app.exec()
 
     window_coordinator.shutdown()
