@@ -1,31 +1,21 @@
 #!/usr/bin/env python3
-"""MagicScribe — Annotazioni sullo schermo, standalone.
+"""MagicScribe — bootstrap dell'applicazione.
 
-Punto di ingresso dell'applicazione. Si limita a importare,
-configurare e avviare i moduli senza contenere logica propria.
-
-COMPATIBILITA' WAYLAND:
-Su Wayland nativo, QWidget.move() e' ignorato dal compositor,
-QCursor.pos() restituisce coordinate relative alla finestra, e
-X11BypassWindowManagerHint non ha effetto. Per garantire il
-funzionamento completo, adottiamo una strategia a due livelli:
-
-1. Forziamo QT_QPA_PLATFORM=xcb per usare XWayland, dove tutte
-   le API X11 funzionano correttamente (move, cursor, bypass WM).
-2. L'icona volante usa QWindow.startSystemMove() come metodo
-   primario per il drag, che funziona su qualsiasi compositor.
-
-Il QT_QPA_PLATFORM DEVE essere impostato PRIMA di importare
-qualsiasi modulo PySide6.
+M3 usa un pannello Qt Quick/QML sopra il core Python/PySide6, mantenendo
+l'overlay QWidget/QPainter legacy finche' la parita' del workflow di disegno
+non sara' verificata. main.py resta limitato a wiring e lifecycle.
 """
 
 from __future__ import annotations
 
+import logging
+from logging.handlers import RotatingFileHandler
 import os
+from pathlib import Path
 import sys
 
-# Forza il backend X11/XWayland su Wayland.
-# DEVE essere impostato PRIMA di importare PySide6.
+# Mantiene la policy XWayland esistente durante la migrazione dell'overlay.
+# Deve essere impostata prima di importare PySide6.
 _is_wayland = (
     os.environ.get("XDG_SESSION_TYPE") == "wayland"
     or bool(os.environ.get("WAYLAND_DISPLAY"))
@@ -33,26 +23,28 @@ _is_wayland = (
 if _is_wayland and not os.environ.get("QT_QPA_PLATFORM"):
     os.environ["QT_QPA_PLATFORM"] = "xcb"
 
-import logging
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
-
 from PySide6.QtCore import QTimer, QSize
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QWindow
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
 
 from config.constants import AppMeta, PathDefaults, LogDefaults
 from config.settings import Settings
 from core.app_controller import AppController
 from core.event_bus import event_bus
-from ui.main_window import MainWindow
+from ui.adapters.drawing_adapter import DrawingAdapter
+from ui.adapters.shell_adapter import ShellAdapter
+from ui.adapters.tool_adapter import ToolAdapter
+from ui.models.tool_list_model import ToolListModel
+from ui.native.window_coordinator import WindowCoordinator
 from ui.overlay_window import OverlayWindow
-from ui.tray_icon import TrayIcon
 from ui.styles.breeze_dark import build_stylesheet
+from ui.tray_icon import TrayIcon
 
 
 def _setup_logging() -> None:
-    """Configura il sistema di logging con rotazione file."""
+    """Configura logging su file rotante e stderr."""
     PathDefaults.LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     root_logger = logging.getLogger()
@@ -67,25 +59,42 @@ def _setup_logging() -> None:
     file_handler.setLevel(
         getattr(logging, LogDefaults.FILE_LEVEL, logging.DEBUG),
     )
-    file_fmt = logging.Formatter(
+    file_handler.setFormatter(logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    file_handler.setFormatter(file_fmt)
+    ))
 
     console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setLevel(
         getattr(logging, LogDefaults.CONSOLE_LEVEL, logging.WARNING),
     )
-    console_fmt = logging.Formatter("[%(levelname)s] %(message)s")
-    console_handler.setFormatter(console_fmt)
+    console_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
 
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
 
 
+def _set_application_icon(app: QApplication, app_dir: Path) -> None:
+    """Carica le icone pre-renderizzate senza duplicare policy altrove."""
+    png_dir = app_dir / "assets" / "icons" / "png"
+    svg_path = app_dir / "assets" / "icons" / "magicscribe.svg"
+
+    if png_dir.exists():
+        icon = QIcon()
+        for size in (16, 22, 24, 32, 48, 64, 128, 256, 512):
+            png_path = png_dir / f"magicscribe_{size}.png"
+            if png_path.exists():
+                icon.addFile(str(png_path), size=QSize(size, size))
+        if not icon.isNull():
+            app.setWindowIcon(icon)
+            return
+
+    if svg_path.exists():
+        app.setWindowIcon(QIcon(str(svg_path)))
+
+
 def main() -> None:
-    """Orchestratore principale dell'applicazione MagicScribe."""
+    """Crea servizi, adapter, shell Qt/QML e avvia l'event loop."""
     _setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Avvio %s v%s", AppMeta.NAME, AppMeta.VERSION)
@@ -100,24 +109,13 @@ def main() -> None:
     app.setOrganizationName(AppMeta.ORG_NAME)
     app.setApplicationDisplayName(AppMeta.DISPLAY_NAME)
     app.setDesktopFileName(AppMeta.ORG_NAME)
+    app.setQuitOnLastWindowClosed(True)
 
     app_dir = Path(__file__).resolve().parent
-    png_dir = app_dir / "assets" / "icons" / "png"
-    svg_path = app_dir / "assets" / "icons" / "magicscribe.svg"
-    if png_dir.exists():
-        icon = QIcon()
-        for size in (16, 22, 24, 32, 48, 64, 128, 256, 512):
-            png_path = png_dir / f"magicscribe_{size}.png"
-            if png_path.exists():
-                icon.addFile(str(png_path), size=QSize(size, size))
-        if not icon.isNull():
-            app.setWindowIcon(icon)
-        else:
-            app.setWindowIcon(QIcon(str(svg_path)))
-    elif svg_path.exists():
-        app.setWindowIcon(QIcon(str(svg_path)))
+    _set_application_icon(app, app_dir)
 
-    app.setQuitOnLastWindowClosed(True)
+    # QSS resta temporaneamente per i componenti QWidget legacy (overlay,
+    # floating icon, tray). Il pannello QML usa esclusivamente Theme.qml.
     app.setStyleSheet(build_stylesheet())
 
     settings = Settings(
@@ -126,29 +124,66 @@ def main() -> None:
         ),
     )
     settings.load()
-
     controller = AppController(settings)
 
-    main_window = MainWindow(controller)
+    # Overlay legacy: intenzionalmente preservato fino alla milestone M5.
     overlay = OverlayWindow(controller)
     overlay.show()
-    main_window.set_overlay(overlay)
-    tray = TrayIcon(controller, main_window)
 
-    def _ensure_z_order() -> None:
-        overlay.lower()
-        if main_window.isVisible():
-            main_window.raise_()
-            main_window.activateWindow()
+    window_coordinator = WindowCoordinator(overlay)
+    drawing_adapter = DrawingAdapter(controller)
+    tool_adapter = ToolAdapter(controller)
+    tool_model = ToolListModel()
+    shell_adapter = ShellAdapter(window_coordinator)
+
+    # Deve precedere la creazione della prima QQuickWindow; prepara anche la
+    # futura migrazione dell'overlay traslucido senza cambiare il renderer ora.
+    QQuickWindow.setDefaultAlphaBuffer(True)
+
+    engine = QQmlApplicationEngine()
+    qml_import_root = app_dir / "ui" / "qml"
+    engine.addImportPath(str(qml_import_root))
+    engine.setInitialProperties({
+        "drawingAdapter": drawing_adapter,
+        "toolAdapter": tool_adapter,
+        "shellAdapter": shell_adapter,
+        "toolModel": tool_model,
+    })
+    engine.loadFromModule("MagicScribe", "ControlPanel")
+
+    roots = engine.rootObjects()
+    if not roots or not isinstance(roots[0], QWindow):
+        logger.critical("Impossibile creare il pannello QML MagicScribe")
+        window_coordinator.shutdown()
+        raise SystemExit(1)
+
+    control_window = roots[0]
+    window_coordinator.set_control_window(control_window)
+
+    tray = TrayIcon(controller, window_coordinator.restore_control_panel)
 
     if settings.get("show_control_on_start"):
-        main_window.show()
+        window_coordinator.show_control_panel()
 
-    QTimer.singleShot(200, _ensure_z_order)
+    QTimer.singleShot(200, window_coordinator.ensure_z_order)
 
-    logger.info("Applicazione avviata con successo")
+    # Mantiene riferimenti espliciti agli oggetti con lifecycle applicativo.
+    runtime_refs = (
+        engine,
+        drawing_adapter,
+        tool_adapter,
+        tool_model,
+        shell_adapter,
+        tray,
+        window_coordinator,
+        overlay,
+    )
+    del runtime_refs  # i local restano vivi fino al ritorno da app.exec()
+
+    logger.info("Applicazione avviata con pannello QML")
     exit_code = app.exec()
 
+    window_coordinator.shutdown()
     settings.save()
     logger.info("Applicazione terminata (codice %d)", exit_code)
     sys.exit(exit_code)

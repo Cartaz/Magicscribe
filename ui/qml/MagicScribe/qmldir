@@ -1,0 +1,8 @@
+module MagicScribe
+singleton Theme 1.0 Theme.qml
+RaisedSurface 1.0 RaisedSurface.qml
+InsetSurface 1.0 InsetSurface.qml
+NeuButton 1.0 NeuButton.qml
+ShortcutBadge 1.0 ShortcutBadge.qml
+StatusIndicator 1.0 StatusIndicator.qml
+ControlPanel 1.0 ControlPanel.qml
