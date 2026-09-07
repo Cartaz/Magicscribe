@@ -37,7 +37,7 @@ def test_no_pyqt6_references_remain_in_runtime_sources() -> None:
 
 
 def test_runtime_shell_does_not_use_legacy_floating_widget() -> None:
-    """M4 mantiene il widget legacy solo per test/parita', non nel runtime."""
+    """Il widget floating legacy resta solo nel fallback/test QWidget."""
     root = Path(__file__).resolve().parents[2]
     runtime_files = [
         root / "main.py",
@@ -51,6 +51,23 @@ def test_runtime_shell_does_not_use_legacy_floating_widget() -> None:
     assert offenders == []
 
 
+def test_runtime_does_not_use_legacy_overlay_widget() -> None:
+    """M5 deve usare QQuickWindow/QQuickPaintedItem nel bootstrap runtime."""
+    root = Path(__file__).resolve().parents[2]
+    runtime_files = [
+        root / "main.py",
+        root / "ui" / "native" / "window_coordinator.py",
+        root / "ui" / "quick" / "overlay_surface.py",
+        root / "ui" / "quick" / "drawing_canvas.py",
+    ]
+    offenders = [
+        path.relative_to(root).as_posix()
+        for path in runtime_files
+        if "OverlayWindow" in path.read_text(encoding="utf-8")
+    ]
+    assert offenders == []
+
+
 def test_widget_modules_import_with_pyside6() -> None:
     import ui.drawing_engine  # noqa: F401
     import ui.event_bridge  # noqa: F401
@@ -60,7 +77,7 @@ def test_widget_modules_import_with_pyside6() -> None:
 
 
 def test_legacy_windows_construct_and_sync_under_pyside6(tmp_path) -> None:
-    """Il fallback legacy resta costruibile finche' M5+ non dimostra parita'."""
+    """Il fallback legacy resta costruibile finche' la parita' desktop e' aperta."""
     event_bus.clear()
     settings = Settings(path=tmp_path / "ui_settings.json")
     settings.set("last_tool", "circle")

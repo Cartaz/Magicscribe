@@ -1,4 +1,4 @@
-"""Adapter QML per lo stato e le azioni di disegno."""
+"""Adapter Qt/QML per lo stato e le azioni di disegno."""
 
 from __future__ import annotations
 
@@ -6,14 +6,20 @@ from PySide6.QtCore import QObject, Property, Signal, Slot
 
 from core.app_controller import AppController
 from core.event_bus import event_bus
+from core.models import Stroke
 
 
 class DrawingAdapter(QObject):
-    """Espone a QML la minima API necessaria per il workflow di disegno."""
+    """Boundary UI focalizzato sul workflow di disegno.
+
+    Le Property/Slot costituiscono l'API QML. I metodi Python non decorati sono
+    usati dal QQuickPaintedItem e mantengono il controller/core fuori da QML.
+    """
 
     activeChanged = Signal()
     annotationsVisibleChanged = Signal()
     historyChanged = Signal()
+    repaintRequested = Signal()
 
     def __init__(self, controller: AppController, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -71,11 +77,23 @@ class DrawingAdapter(QObject):
     def redo(self) -> None:
         self._controller.redo()
 
+    # API Python-only del canvas. Non e' esposta come Slot a QML.
+    def create_current_stroke(self) -> Stroke:
+        return self._controller.create_stroke(self._controller.get_current_tool())
+
+    def finalize_stroke(self, stroke: Stroke) -> None:
+        self._controller.finalize_stroke(stroke)
+
+    def strokes_snapshot(self) -> list[Stroke]:
+        return self._controller.stroke_manager.get_strokes()
+
     def _on_drawing_toggled(self, **_kwargs) -> None:
         self.activeChanged.emit()
 
     def _on_visibility_toggled(self, **_kwargs) -> None:
         self.annotationsVisibleChanged.emit()
+        self.repaintRequested.emit()
 
     def _on_history_changed(self, **_kwargs) -> None:
         self.historyChanged.emit()
+        self.repaintRequested.emit()
