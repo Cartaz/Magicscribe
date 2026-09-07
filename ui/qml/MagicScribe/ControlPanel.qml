@@ -39,26 +39,31 @@ ApplicationWindow {
     Shortcut {
         sequence: root.shellAdapter.toggleDrawingShortcut
         context: Qt.WindowShortcut
+        enabled: !root.shellAdapter.globalDrawingShortcutsActive
         onActivated: root.drawingAdapter.toggleDrawing()
     }
     Shortcut {
         sequence: root.shellAdapter.visibilityShortcut
         context: Qt.WindowShortcut
+        enabled: !root.shellAdapter.globalDrawingShortcutsActive
         onActivated: root.drawingAdapter.toggleVisibility()
     }
     Shortcut {
         sequence: root.shellAdapter.clearShortcut
         context: Qt.WindowShortcut
+        enabled: !root.shellAdapter.globalDrawingShortcutsActive
         onActivated: root.drawingAdapter.clearScreen()
     }
     Shortcut {
         sequence: root.shellAdapter.undoShortcut
         context: Qt.WindowShortcut
+        enabled: !root.shellAdapter.globalDrawingShortcutsActive
         onActivated: root.drawingAdapter.undo()
     }
     Shortcut {
         sequence: root.shellAdapter.redoShortcut
         context: Qt.WindowShortcut
+        enabled: !root.shellAdapter.globalDrawingShortcutsActive
         onActivated: root.drawingAdapter.redo()
     }
     Shortcut {
