@@ -10,6 +10,7 @@ from PySide6.QtDBus import QDBusConnection
 from config.settings import Settings
 from core.app_controller import AppController
 from core.event_bus import event_bus
+from ui.adapters.shell_adapter import ShellAdapter
 from ui.native.global_shortcuts import (
     GlobalShortcutService,
     PortalGlobalShortcutBackend,
@@ -33,6 +34,17 @@ class _FakeBackend(QObject):
 
     def shutdown(self) -> None:
         self.shutdown_calls += 1
+
+
+class _FakeCoordinator:
+    def minimize_to_floating(self) -> None:
+        pass
+
+    def restore_control_panel(self) -> None:
+        pass
+
+    def quit_application(self) -> None:
+        pass
 
 
 def _controller(tmp_path) -> AppController:
@@ -77,7 +89,6 @@ def test_service_requests_exact_drawing_shortcuts_and_is_idempotent(tmp_path) ->
         "F8",
         "SHIFT+F8",
     ]
-
     event_bus.clear()
 
 
@@ -97,7 +108,6 @@ def test_service_dispatches_only_registered_actions(tmp_path) -> None:
     state_before = controller.is_drawing_active()
     backend.activated.emit("not_a_shortcut")
     assert controller.is_drawing_active() is state_before
-
     event_bus.clear()
 
 
@@ -121,7 +131,23 @@ def test_service_active_state_tracks_backend_and_shutdown(tmp_path) -> None:
 
     backend.registrationFinished.emit(False, "portal unavailable")
     assert failures == ["portal unavailable"]
+    event_bus.clear()
 
+
+def test_shell_adapter_exposes_global_fallback_state(tmp_path) -> None:
+    controller = _controller(tmp_path)
+    backend = _FakeBackend()
+    service = GlobalShortcutService(controller, backend=backend)
+    adapter = ShellAdapter(_FakeCoordinator(), service)
+    changes: list[bool] = []
+    adapter.globalDrawingShortcutsActiveChanged.connect(
+        lambda: changes.append(adapter.globalDrawingShortcutsActive)
+    )
+
+    assert adapter.globalDrawingShortcutsActive is False
+    backend.registrationFinished.emit(True, "")
+    assert adapter.globalDrawingShortcutsActive is True
+    assert changes == [True]
     event_bus.clear()
 
 
@@ -152,3 +178,27 @@ def test_portal_backend_source_never_waits_synchronously() -> None:
     ).read_text(encoding="utf-8")
     assert "waitForFinished(" not in source
     assert "BlockWithGui" not in source
+
+
+def test_qml_disables_exactly_five_local_drawing_shortcuts() -> None:
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "ui"
+        / "qml"
+        / "MagicScribe"
+        / "ControlPanel.qml"
+    ).read_text(encoding="utf-8")
+    guard = "enabled: !root.shellAdapter.globalDrawingShortcutsActive"
+    assert source.count(guard) == 5
+    assert "sequence: root.shellAdapter.minimizeShortcut\n        context: Qt.WindowShortcut\n        onActivated:" in source
+    assert "sequence: root.shellAdapter.quitShortcut\n        context: Qt.WindowShortcut\n        onActivated:" in source
+
+
+def test_main_wires_global_shortcuts_without_dbus_policy() -> None:
+    source = (Path(__file__).resolve().parents[2] / "main.py").read_text(
+        encoding="utf-8"
+    )
+    assert "GlobalShortcutService(controller)" in source
+    assert "global_shortcuts.start(_portal_parent_window(control_window))" in source
+    assert "global_shortcuts.shutdown()" in source
+    assert "QDBus" not in source
