@@ -1,7 +1,7 @@
 """Costanti globali dell'applicazione MagicScribe.
 
-Organizzate per dominio funzionale in classi dedicate.
-I percorsi sono calcolati dinamicamente tramite pathlib e XDG.
+I percorsi rispettano le directory XDG; i valori della vecchia UI QWidget sono
+mantenuti soltanto per il fallback di parita' finche' l'issue desktop e' aperta.
 """
 
 from __future__ import annotations
@@ -11,17 +11,18 @@ from pathlib import Path
 
 
 def _xdg_config_home() -> Path:
-    """Ritorna il percorso XDG_CONFIG_HOME per l'utente corrente."""
     return Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
 
 
 def _xdg_state_home() -> Path:
-    """Ritorna il percorso XDG_STATE_HOME per l'utente corrente."""
     return Path(os.getenv("XDG_STATE_HOME", Path.home() / ".local" / "state"))
 
 
+def _xdg_data_home() -> Path:
+    return Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+
+
 class AppMeta:
-    """Metadati dell'applicazione."""
     NAME: str = "MagicScribe"
     DISPLAY_NAME: str = "MagicScribe"
     DESCRIPTION: str = "Annotazioni sullo schermo — standalone"
@@ -31,19 +32,15 @@ class AppMeta:
 
 
 class PathDefaults:
-    """Percorsi predefiniti calcolati dinamicamente."""
     CONFIG_DIR: Path = _xdg_config_home() / AppMeta.ORG_NAME
-    SETTINGS_FILE: Path = _xdg_config_home() / AppMeta.ORG_NAME / "settings.json"
+    SETTINGS_FILE: Path = CONFIG_DIR / "settings.json"
     LOG_DIR: Path = _xdg_state_home() / AppMeta.ORG_NAME
-    LOG_FILE: Path = _xdg_state_home() / AppMeta.ORG_NAME / "magicscribe.log"
-    DESKTOP_FILE: Path = (
-        Path.home() / ".local" / "share" / "applications"
-        / f"{AppMeta.ORG_NAME}.desktop"
-    )
+    LOG_FILE: Path = LOG_DIR / "magicscribe.log"
+    DESKTOP_FILE: Path = _xdg_data_home() / "applications" / f"{AppMeta.ORG_NAME}.desktop"
 
 
 class UIDefaults:
-    """Valori predefiniti per l'interfaccia utente."""
+    """Valori della UI QWidget legacy, mantenuti solo per il gate di parita'."""
     WINDOW_MIN_WIDTH: int = 300
     WINDOW_MAX_WIDTH: int = 340
     WINDOW_MIN_HEIGHT: int = 500
@@ -58,7 +55,7 @@ class UIDefaults:
 
 
 class HotkeyDefaults:
-    """Scorciatoie da tastiera predefinite."""
+    """Unica sorgente di verita' delle scorciatoie runtime correnti."""
     TOGGLE_DRAW: str = "F9"
     TOGGLE_VISIBILITY: str = "Ctrl+Shift+F9"
     CLEAR: str = "Shift+F9"
@@ -69,11 +66,6 @@ class HotkeyDefaults:
 
 
 class ToolDefaults:
-    """Valori predefiniti per gli strumenti di disegno.
-
-    Nota: i colori di default usano solo la palette conforme
-    a Breeze Dark (nessun blu come accento, §5.1.1).
-    """
     PEN_COLOR: str = "#ff0000"
     PEN_SIZE: int = 5
     ERASER_SIZE: int = 40
@@ -90,8 +82,7 @@ class ToolDefaults:
 
 
 class LogDefaults:
-    """Parametri di logging."""
-    MAX_BYTES: int = 5 * 1024 * 1024  # 5 MB
+    MAX_BYTES: int = 5 * 1024 * 1024
     BACKUP_COUNT: int = 3
     CONSOLE_LEVEL: str = "WARNING"
     FILE_LEVEL: str = "DEBUG"
