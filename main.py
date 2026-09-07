@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """MagicScribe — bootstrap dell'applicazione.
 
-M4 usa Qt Quick/QML per pannello di controllo e floating palette, mantenendo
-l'overlay QWidget/QPainter legacy finche' la parita' del workflow di disegno
-non sara' verificata. main.py resta limitato a wiring e lifecycle.
+M5 usa Qt Quick per l'intera shell runtime: pannello QML, floating palette QML
+e overlay QQuickWindow/QQuickPaintedItem. Il core Python resta invariato e
+main.py si limita a wiring, logging e lifecycle.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ import os
 from pathlib import Path
 import sys
 
-# Mantiene la policy XWayland esistente durante la migrazione dell'overlay.
-# Deve essere impostata prima di importare PySide6.
+# Manteniamo temporaneamente XWayland finche' la parita' desktop/Wayland non
+# viene verificata separatamente. Deve precedere qualsiasi import PySide6.
 _is_wayland = (
     os.environ.get("XDG_SESSION_TYPE") == "wayland"
     or bool(os.environ.get("WAYLAND_DISPLAY"))
@@ -38,7 +38,7 @@ from ui.adapters.shell_adapter import ShellAdapter
 from ui.adapters.tool_adapter import ToolAdapter
 from ui.models.tool_list_model import ToolListModel
 from ui.native.window_coordinator import WindowCoordinator
-from ui.overlay_window import OverlayWindow
+from ui.quick.overlay_surface import OverlaySurface
 from ui.styles.breeze_dark import build_stylesheet
 from ui.tray_icon import TrayIcon
 
@@ -123,7 +123,7 @@ def _create_floating_palette(
 
 
 def main() -> None:
-    """Crea servizi, adapter, shell Qt/QML e avvia l'event loop."""
+    """Crea servizi, adapter, superfici Qt Quick e avvia l'event loop."""
     _setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Avvio %s v%s", AppMeta.NAME, AppMeta.VERSION)
@@ -143,8 +143,8 @@ def main() -> None:
     app_dir = Path(__file__).resolve().parent
     _set_application_icon(app, app_dir)
 
-    # QSS resta temporaneamente per il codice QWidget legacy ancora presente.
-    # Le due finestre runtime della shell usano esclusivamente Theme.qml.
+    # Resta temporaneamente solo per tray/menu e fallback QWidget legacy.
+    # Pannello, floating palette e overlay runtime non dipendono dal QSS.
     app.setStyleSheet(build_stylesheet())
 
     settings = Settings(
@@ -155,19 +155,23 @@ def main() -> None:
     settings.load()
     controller = AppController(settings)
 
-    # Overlay legacy: intenzionalmente preservato fino alla milestone M5.
-    overlay = OverlayWindow(controller)
-    overlay.show()
-
-    window_coordinator = WindowCoordinator(overlay)
     drawing_adapter = DrawingAdapter(controller)
     tool_adapter = ToolAdapter(controller)
     tool_model = ToolListModel()
+
+    # Deve precedere la creazione di qualsiasi QQuickWindow traslucida.
+    QQuickWindow.setDefaultAlphaBuffer(True)
+
+    overlay_surface = OverlaySurface(drawing_adapter, tool_adapter)
+    overlay_surface.show()
+    window_coordinator = WindowCoordinator(overlay_surface.window)
     shell_adapter = ShellAdapter(window_coordinator)
 
-    # Deve precedere la creazione della prima QQuickWindow; prepara anche la
-    # futura migrazione dell'overlay traslucido senza cambiare il renderer ora.
-    QQuickWindow.setDefaultAlphaBuffer(True)
+    # Una variazione dell'input mode puo' modificare l'ordine nativo della
+    # finestra: ripristiniamo l'overlay sotto ai controlli al frame successivo.
+    drawing_adapter.activeChanged.connect(
+        lambda: QTimer.singleShot(50, window_coordinator.ensure_z_order)
+    )
 
     engine = QQmlApplicationEngine()
     qml_import_root = app_dir / "ui" / "qml"
@@ -203,7 +207,6 @@ def main() -> None:
 
     QTimer.singleShot(200, window_coordinator.ensure_z_order)
 
-    # Mantiene riferimenti espliciti agli oggetti con lifecycle applicativo.
     runtime_refs = (
         engine,
         floating_component,
@@ -214,11 +217,11 @@ def main() -> None:
         shell_adapter,
         tray,
         window_coordinator,
-        overlay,
+        overlay_surface,
     )
     del runtime_refs  # i local restano vivi fino al ritorno da app.exec()
 
-    logger.info("Applicazione avviata con shell QML")
+    logger.info("Applicazione avviata con shell e overlay Qt Quick")
     exit_code = app.exec()
 
     window_coordinator.shutdown()
