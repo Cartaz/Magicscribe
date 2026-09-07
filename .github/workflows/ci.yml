@@ -48,6 +48,9 @@ jobs:
           print(f"Qt {qVersion()} / PySide6 runtime OK")
           PY
 
+      - name: Validate installer syntax
+        run: bash -n install.sh
+
       - name: Compile Python sources
         run: python -m compileall -q config core ui main.py
 
