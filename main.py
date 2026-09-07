@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """MagicScribe — bootstrap dell'applicazione.
 
-M5 usa Qt Quick per l'intera shell runtime: pannello QML, floating palette QML
-e overlay QQuickWindow/QQuickPaintedItem. Il core Python resta invariato e
-main.py si limita a wiring, logging e lifecycle.
+Qt Quick possiede l'intera shell runtime; Python mantiene wiring, lifecycle,
+integrazione desktop e stato canonico. Il core applicativo resta indipendente
+dalla presentazione QML.
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ from ui.adapters.drawing_adapter import DrawingAdapter
 from ui.adapters.shell_adapter import ShellAdapter
 from ui.adapters.tool_adapter import ToolAdapter
 from ui.models.tool_list_model import ToolListModel
+from ui.native.global_shortcuts import GlobalShortcutService
 from ui.native.window_coordinator import WindowCoordinator
 from ui.quick.overlay_surface import OverlaySurface
 from ui.styles.breeze_dark import build_stylesheet
@@ -91,6 +92,14 @@ def _set_application_icon(app: QApplication, app_dir: Path) -> None:
 
     if svg_path.exists():
         app.setWindowIcon(QIcon(str(svg_path)))
+
+
+def _portal_parent_window(window: QWindow) -> str:
+    """Restituisce il parent_window XDG per il backend Qt attuale."""
+    if QApplication.platformName().lower() != "xcb":
+        return ""
+    xid = int(window.winId())
+    return f"x11:{xid:x}" if xid else ""
 
 
 def _create_floating_palette(
@@ -165,7 +174,8 @@ def main() -> None:
     overlay_surface = OverlaySurface(drawing_adapter, tool_adapter)
     overlay_surface.show()
     window_coordinator = WindowCoordinator(overlay_surface.window)
-    shell_adapter = ShellAdapter(window_coordinator)
+    global_shortcuts = GlobalShortcutService(controller)
+    shell_adapter = ShellAdapter(window_coordinator, global_shortcuts)
 
     # Una variazione dell'input mode puo' modificare l'ordine nativo della
     # finestra: ripristiniamo l'overlay sotto ai controlli al frame successivo.
@@ -187,6 +197,7 @@ def main() -> None:
     roots = engine.rootObjects()
     if not roots or not isinstance(roots[0], QWindow):
         logger.critical("Impossibile creare il pannello QML MagicScribe")
+        global_shortcuts.shutdown()
         window_coordinator.shutdown()
         raise SystemExit(1)
 
@@ -199,6 +210,11 @@ def main() -> None:
     )
     window_coordinator.set_control_window(control_window)
     window_coordinator.set_floating_window(floating_window)
+
+    # Le scorciatoie globali riguardano solo le azioni di disegno. Se il portal
+    # non e' disponibile o la registrazione non e' completa, QML mantiene le
+    # WindowShortcut locali come fallback senza interrompere l'avvio.
+    global_shortcuts.start(_portal_parent_window(control_window))
 
     tray = TrayIcon(controller, window_coordinator.restore_control_panel)
 
@@ -215,6 +231,7 @@ def main() -> None:
         tool_adapter,
         tool_model,
         shell_adapter,
+        global_shortcuts,
         tray,
         window_coordinator,
         overlay_surface,
@@ -224,6 +241,7 @@ def main() -> None:
     logger.info("Applicazione avviata con shell e overlay Qt Quick")
     exit_code = app.exec()
 
+    global_shortcuts.shutdown()
     window_coordinator.shutdown()
     settings.save()
     logger.info("Applicazione terminata (codice %d)", exit_code)
