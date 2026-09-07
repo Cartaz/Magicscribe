@@ -1,8 +1,8 @@
 """Scorciatoie globali tramite XDG Desktop Portal.
 
-Il modulo nasconde QtDBus dietro un servizio piccolo: il core continua a
-possedere le azioni, mentre il portal possiede esclusivamente la registrazione
-nativa delle scorciatoie. Tutte le chiamate D-Bus sono non bloccanti.
+QtDBus resta confinato in questo modulo. Il core possiede le azioni; questo
+servizio possiede soltanto registrazione, dispatch nativo e lifecycle delle
+scorciatoie globali. Le chiamate al portal non bloccano il GUI thread.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from PySide6.QtDBus import (
     QDBusInterface,
     QDBusObjectPath,
     QDBusPendingCallWatcher,
-    QDBusPendingReply,
     QDBusVariant,
 )
 
@@ -36,9 +35,7 @@ _SESSION_IFACE = "org.freedesktop.portal.Session"
 
 _CREATE_RESPONSE_SLOT = "_on_create_response(uint,QVariantMap)"
 _BIND_RESPONSE_SLOT = "_on_bind_response(uint,QVariantMap)"
-_ACTIVATED_SLOT = (
-    "_on_activated(QDBusObjectPath,QString,qulonglong,QVariantMap)"
-)
+_ACTIVATED_SLOT = "_on_activated(QDBusObjectPath,QString,qulonglong,QVariantMap)"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +48,7 @@ class ShortcutSpec:
 
 
 def _qt_to_xdg_trigger(sequence: str) -> str:
-    """Converte le sequenze Qt usate dal progetto nel formato XDG shortcuts."""
+    """Converte le sequenze Qt del progetto nel formato XDG shortcuts."""
     aliases = {
         "ctrl": "CTRL",
         "control": "CTRL",
@@ -109,20 +106,27 @@ class PortalGlobalShortcutBackend(QObject):
         self._bus = bus or QDBusConnection.sessionBus()
         self._portal: QDBusInterface | None = None
         self._session_handle = ""
+        self._shortcuts: tuple[ShortcutSpec, ...] = ()
         self._requested_ids: set[str] = set()
         self._watchers: list[QDBusPendingCallWatcher] = []
+        self._watcher_metadata: dict[int, tuple[str, str, str]] = {}
         self._response_connections: list[tuple[str, str]] = []
         self._activated_connected = False
         self._started = False
         self._finished = False
         self._parent_window = ""
 
-    def start(self, shortcuts: tuple[ShortcutSpec, ...], parent_window: str = "") -> None:
+    def start(
+        self,
+        shortcuts: tuple[ShortcutSpec, ...],
+        parent_window: str = "",
+    ) -> None:
         """Avvia CreateSession -> BindShortcuts senza bloccare il GUI thread."""
         if self._started:
             return
         self._started = True
         self._parent_window = parent_window
+        self._shortcuts = shortcuts
         self._requested_ids = {shortcut.shortcut_id for shortcut in shortcuts}
 
         if not self._bus.isConnected():
@@ -170,7 +174,6 @@ class PortalGlobalShortcutBackend(QObject):
             expected_path=request_path,
             response_slot=_CREATE_RESPONSE_SLOT,
         )
-        self._shortcuts = shortcuts
 
     def shutdown(self) -> None:
         """Chiude deterministicamente la sessione e scollega i segnali."""
@@ -241,36 +244,36 @@ class PortalGlobalShortcutBackend(QObject):
         response_slot: str,
     ) -> None:
         watcher = QDBusPendingCallWatcher(pending, self)
-        watcher._magicscribe_method_name = method_name
-        watcher._magicscribe_expected_path = expected_path
-        watcher._magicscribe_response_slot = response_slot
-        watcher.finished.connect(self._on_method_reply_finished)
         self._watchers.append(watcher)
+        self._watcher_metadata[id(watcher)] = (
+            method_name,
+            expected_path,
+            response_slot,
+        )
+        watcher.finished.connect(self._on_method_reply_finished)
 
     def _on_method_reply_finished(self, watcher: QDBusPendingCallWatcher) -> None:
-        reply = QDBusPendingReply(watcher)
-        method_name = getattr(watcher, "_magicscribe_method_name", "portal call")
-        expected_path = getattr(watcher, "_magicscribe_expected_path", "")
-        response_slot = getattr(watcher, "_magicscribe_response_slot", "")
-
+        method_name, expected_path, response_slot = self._watcher_metadata.pop(
+            id(watcher),
+            ("portal call", "", ""),
+        )
         try:
-            if reply.isError():
-                error = reply.error()
+            if watcher.isError():
+                error = watcher.error()
                 self._finish(
                     False,
                     f"{method_name} fallita: {error.name()}: {error.message()}",
                 )
                 return
 
-            arguments = reply.reply().arguments()
+            arguments = watcher.reply().arguments()
             if not arguments:
                 self._finish(False, f"{method_name} non ha restituito un request handle")
                 return
 
             returned_path = _object_path_text(arguments[0])
             if returned_path and returned_path != expected_path and response_slot:
-                # Compatibilita' con portal precedenti alla convenzione TOKEN:
-                # aggiorna la sottoscrizione al path effettivamente restituito.
+                # Compatibilita' con portal precedenti alla convenzione TOKEN.
                 self._disconnect_response(expected_path, response_slot)
                 if not self._connect_response(returned_path, response_slot):
                     self._finish(
@@ -286,17 +289,7 @@ class PortalGlobalShortcutBackend(QObject):
 
     @Slot("uint", "QVariantMap")
     def _on_create_response(self, response: int, results: dict) -> None:
-        connection = next(
-            (
-                entry
-                for entry in self._response_connections
-                if entry[1] == _CREATE_RESPONSE_SLOT
-            ),
-            None,
-        )
-        if connection is not None:
-            self._disconnect_response(*connection)
-
+        self._disconnect_response_for_slot(_CREATE_RESPONSE_SLOT)
         if response != 0:
             message = (
                 "Registrazione scorciatoie annullata dall'utente"
@@ -311,7 +304,6 @@ class PortalGlobalShortcutBackend(QObject):
         if not self._session_handle.startswith("/"):
             self._finish(False, "CreateSession non ha restituito una sessione valida")
             return
-
         self._bind_shortcuts()
 
     def _bind_shortcuts(self) -> None:
@@ -355,17 +347,7 @@ class PortalGlobalShortcutBackend(QObject):
 
     @Slot("uint", "QVariantMap")
     def _on_bind_response(self, response: int, results: dict) -> None:
-        connection = next(
-            (
-                entry
-                for entry in self._response_connections
-                if entry[1] == _BIND_RESPONSE_SLOT
-            ),
-            None,
-        )
-        if connection is not None:
-            self._disconnect_response(*connection)
-
+        self._disconnect_response_for_slot(_BIND_RESPONSE_SLOT)
         if response != 0:
             message = (
                 "Configurazione scorciatoie annullata dall'utente"
@@ -384,16 +366,27 @@ class PortalGlobalShortcutBackend(QObject):
         except TypeError:
             logger.warning("Risposta BindShortcuts non iterabile: %r", raw_shortcuts)
 
-        # Fail closed: o tutte le scorciatoie richieste sono globali, oppure
-        # manteniamo integralmente il fallback locale. Evita doppi trigger.
+        # O tutte le scorciatoie richieste sono globali, oppure il fallback
+        # locale resta integralmente attivo. Evita doppi trigger e buchi.
         if bound_ids != self._requested_ids:
             self._finish(
                 False,
                 "Il portal non ha registrato tutte le scorciatoie richieste",
             )
             return
-
         self._finish(True, "")
+
+    def _disconnect_response_for_slot(self, slot_signature: str) -> None:
+        connection = next(
+            (
+                entry
+                for entry in self._response_connections
+                if entry[1] == slot_signature
+            ),
+            None,
+        )
+        if connection is not None:
+            self._disconnect_response(*connection)
 
     @Slot("QDBusObjectPath", str, "qulonglong", "QVariantMap")
     def _on_activated(
@@ -412,11 +405,11 @@ class PortalGlobalShortcutBackend(QObject):
         if self._finished:
             return
         self._finished = True
-        if not success:
+        if success:
+            logger.info("Global shortcuts registrate tramite XDG Desktop Portal")
+        else:
             logger.warning("Global shortcuts non attive: %s", message)
             self.shutdown()
-        else:
-            logger.info("Global shortcuts registrate tramite XDG Desktop Portal")
         self.registrationFinished.emit(success, message)
 
 
@@ -472,7 +465,6 @@ class GlobalShortcutService(QObject):
                 _qt_to_xdg_trigger(HotkeyDefaults.REDO),
             ),
         )
-
         self._backend.activated.connect(self._on_activated)
         self._backend.registrationFinished.connect(self._on_registration_finished)
 
