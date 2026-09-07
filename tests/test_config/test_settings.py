@@ -92,3 +92,23 @@ def test_invalid_set_does_not_replace_current_value(tmp_path: Path) -> None:
 
     assert settings.get("pen_size") == 12
     assert settings.get("last_tool") == "pen"
+
+
+def test_color_formats_supported_by_renderer_are_preserved(tmp_path: Path) -> None:
+    settings = _make_settings(tmp_path)
+
+    settings.set("pen_color", "#AABBCCDD")
+    assert settings.get("pen_color") == "#aabbccdd"
+
+    settings.set("pen_color", "rgba(12, 34, 56, 0.5)")
+    assert settings.get("pen_color") == "rgba(12,34,56,0.5)"
+
+
+def test_invalid_rgba_is_rejected(tmp_path: Path) -> None:
+    settings = _make_settings(tmp_path)
+    original = settings.get("pen_color")
+
+    settings.set("pen_color", "rgba(300,0,0,1)")
+    settings.set("pen_color", "rgba(0,0,0,2)")
+
+    assert settings.get("pen_color") == original
