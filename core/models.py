@@ -25,7 +25,7 @@ class DrawingState(Enum):
     """Stato del motore di disegno."""
     INACTIVE = auto()    # Disegno disattivato
     ACTIVE = auto()      # Disegno attivo, pronto per disegnare
-    DRAWING = auto()     # L'utente sta attivamente disegnando
+    DRAWING = auto()     # Riservato a eventuali workflow di dominio futuri
 
 
 @dataclass(frozen=True)
@@ -102,13 +102,10 @@ class ToolConfig:
 
 @dataclass
 class AppState:
-    """Stato globale dell'applicazione.
+    """Stato globale dell'applicazione non posseduto da servizi dedicati.
 
-    Attributes:
-        drawing_state: stato del motore di disegno.
-        annotations_visible: se le annotazioni sono visibili.
-        current_tool: strumento attualmente selezionato.
+    Lo strumento corrente appartiene esclusivamente a ToolManager; non viene
+    duplicato qui, così ogni stato mutabile importante ha un solo proprietario.
     """
     drawing_state: DrawingState = DrawingState.INACTIVE
     annotations_visible: bool = True
-    current_tool: ToolType = ToolType.PEN

@@ -1,26 +1,15 @@
-"""Badge scorciatoia tastiera.
-
-Visualizza la combinazione di tasti come badge con
-sfondo semi-trasparente e testo centrato.
-"""
+"""Badge scorciatoia tastiera."""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLabel
 
 from config.theme import ThemeColors as C
 
 
 class ShortcutBadge(QLabel):
-    """Badge che mostra una scorciatoia da tastiera.
-
-    Il badge ha sfondo semi-trasparente, bordo sottile,
-    testo centrato in font monospace.
-
-    Attributes:
-        _key_text: testo della scorciatoia (es. 'F9', 'Ctrl+F9').
-    """
+    """Badge che mostra una scorciatoia da tastiera."""
 
     def __init__(self, key_text: str, parent: QLabel | None = None) -> None:
         super().__init__(key_text, parent)

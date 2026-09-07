@@ -1,12 +1,9 @@
 """Finestra overlay trasparente per il disegno su schermo.
 
-Questa e' la finestra chiave dell'applicazione: copre
-l'intero schermo con uno strato trasparente su cui
-l'utente puo' disegnare annotazioni.
-
-Quando il disegno e' disattivato, la finestra e' completamente
-trasparente agli eventi mouse (click-through), permettendo
-all'utente di interagire normalmente con le altre finestre.
+Questa finestra copre il desktop virtuale e cattura il mouse solo quando il
+disegno e' attivo. In M1 mantiene intenzionalmente il comportamento QWidget,
+QPainter e X11/XShape esistente; verra' migrata a Qt Quick in una milestone
+successiva dopo verifica di parita'.
 """
 
 from __future__ import annotations
@@ -15,14 +12,14 @@ import ctypes
 import ctypes.util
 import logging
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import (
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import (
     QPainter, QCursor, QPixmap, QPen, QColor, QBrush,
     QKeySequence, QShortcut, QMouseEvent, QPaintEvent,
 )
-from PyQt6.QtWidgets import QWidget, QApplication
+from PySide6.QtWidgets import QWidget, QApplication
 
 from core.models import Stroke, Point, ToolType
 from ui.drawing_engine import DrawingEngine
@@ -30,56 +27,36 @@ from core.app_controller import AppController
 from core.event_bus import event_bus
 from config.constants import HotkeyDefaults
 
-if TYPE_CHECKING:
-    pass
-
 logger = logging.getLogger(__name__)
 
-# Costanti X11 per XShapeCombineRegion / XShapeCombineMask
-_SHAPE_INPUT = 2   # ShapeInput
-_SHAPE_SET = 0     # ShapeSet
+_SHAPE_INPUT = 2
+_SHAPE_SET = 0
 
 
 def _create_eraser_cursor(size: int = 32) -> QCursor:
-    """Crea un cursore personalizzato circolare per la gomma.
-
-    Args:
-        size: diametro del cursore in pixel.
-
-    Returns:
-        QCursor con cerchio trasparente e bordo bianco.
-    """
     px = QPixmap(size, size)
     px.fill(Qt.GlobalColor.transparent)
-    p = QPainter(px)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setBrush(QBrush(QColor(0, 0, 0, 0)))
-    p.setPen(QPen(QColor(255, 255, 255, 180), 2))
-    p.drawEllipse(2, 2, size - 4, size - 4)
-    p.end()
+    painter = QPainter(px)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QBrush(QColor(0, 0, 0, 0)))
+    painter.setPen(QPen(QColor(255, 255, 255, 180), 2))
+    painter.drawEllipse(2, 2, size - 4, size - 4)
+    painter.end()
     return QCursor(px, size // 2, size // 2)
 
 
-# Cache globale per le librerie X11/Xext caricate via ctypes.
-# Caricarle ad ogni chiamata di _apply_x11_input_shape era inefficiente
-# e causava leak di handle Display*.
 _x11_libs: Optional[tuple] = None
 
 
 def _load_x11_libs() -> Optional[tuple]:
-    """Carica e configura le librerie X11/Xext una sola volta (cache globale).
-
-    Returns:
-        Tuple (x11, xext) con i prototype gia' configurati, oppure None
-        se le librerie non sono disponibili o non applicabili.
-    """
+    """Carica e configura X11/Xext una sola volta."""
     global _x11_libs
     if _x11_libs is not None:
         return _x11_libs
 
     platform = os.environ.get("QT_QPA_PLATFORM", "auto")
     if platform not in ("xcb", "auto"):
-        _x11_libs = ()  # sentinel: non applicabile
+        _x11_libs = ()
         return None
 
     x11_path = ctypes.util.find_library("X11")
@@ -93,7 +70,6 @@ def _load_x11_libs() -> Optional[tuple]:
         x11 = ctypes.cdll.LoadLibrary(x11_path)
         xext = ctypes.cdll.LoadLibrary(xext_path)
 
-        # Prototipi X11
         x11.XOpenDisplay.restype = ctypes.c_void_p
         x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
         x11.XCreateRegion.restype = ctypes.c_void_p
@@ -104,26 +80,25 @@ def _load_x11_libs() -> Optional[tuple]:
         x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
         x11.XCloseDisplay.restype = None
 
-        # Prototipi XShape
         xext.XShapeCombineRegion.restype = None
         xext.XShapeCombineRegion.argtypes = [
-            ctypes.c_void_p,   # Display*
-            ctypes.c_ulong,    # Window
-            ctypes.c_int,      # shape_kind (ShapeInput = 2)
-            ctypes.c_int,      # x
-            ctypes.c_int,      # y
-            ctypes.c_void_p,   # Region
-            ctypes.c_int,      # op (ShapeSet = 0)
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_int,
         ]
         xext.XShapeCombineMask.restype = None
         xext.XShapeCombineMask.argtypes = [
-            ctypes.c_void_p,   # Display*
-            ctypes.c_ulong,    # Window
-            ctypes.c_int,      # shape_kind
-            ctypes.c_int,      # x
-            ctypes.c_int,      # y
-            ctypes.c_ulong,    # Pixmap (0 = None)
-            ctypes.c_int,      # op (ShapeSet = 0)
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_ulong,
+            ctypes.c_int,
         ]
     except (OSError, AttributeError) as exc:
         logger.debug("Caricamento librerie X11 fallito: %s", exc)
@@ -135,17 +110,7 @@ def _load_x11_libs() -> Optional[tuple]:
 
 
 class OverlayWindow(QWidget):
-    """Overlay trasparente full-screen per il disegno di annotazioni.
-
-    La finestra copre tutti gli schermi ed e' sempre in primo piano,
-    ma cattura gli eventi del mouse solo quando il disegno e' attivo.
-
-    Attributes:
-        _controller: riferimento al controller dell'app.
-        _current_stroke: tratto in corso di disegno (None se idle).
-        _eraser_cursor: cursore personalizzato per la gomma.
-        _floating_icon: riferimento all'icona volante.
-    """
+    """Overlay trasparente full-screen per il disegno di annotazioni."""
 
     def __init__(
         self,
@@ -157,40 +122,26 @@ class OverlayWindow(QWidget):
         self._current_stroke: Stroke | None = None
         self._eraser_cursor = _create_eraser_cursor()
         self._floating_icon: QWidget | None = None
+        self._shortcuts: list[QShortcut] = []
 
         self._setup_window()
         self._connect_events()
         self._register_shortcuts()
 
     def set_floating_icon(self, icon: QWidget) -> None:
-        """Imposta il riferimento all'icona volante per il fallback click.
-
-        Args:
-            icon: widget dell'icona volante.
-        """
         self._floating_icon = icon
 
     def _is_in_floating_icon(self, pos) -> bool:
-        """Verifica se una posizione globale e' dentro l'icona volante.
-
-        Args:
-            pos: posizione globale (QPointF o QPoint).
-
-        Returns:
-            True se la posizione e' dentro l'area dell'icona volante.
-        """
         if self._floating_icon is None or not self._floating_icon.isVisible():
             return False
         try:
-            gp = pos.toPoint() if hasattr(pos, 'toPoint') else pos
-            icon_rect = self._floating_icon.geometry()
-            return icon_rect.contains(gp)
+            global_pos = pos.toPoint() if hasattr(pos, "toPoint") else pos
+            return self._floating_icon.geometry().contains(global_pos)
         except (AttributeError, TypeError) as exc:
             logger.debug("Errore verifica icona volante: %s", exc)
             return False
 
     def _setup_window(self) -> None:
-        """Configura le proprieta' della finestra overlay."""
         self.setWindowTitle("MagicScribe Overlay")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -200,19 +151,12 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
-        # Evita che l'overlay appaia nella taskbar di KDE Plasma.
-        # Su XWayland il flag Tool da solo potrebbe non bastare.
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._cover_all_screens()
         self._set_click_through(True)
 
     def _cover_all_screens(self) -> None:
-        """Imposta la geometria per coprire tutti gli schermi.
-
-        Difensivo rispetto a primaryScreen() che puo' restituire None
-        (headless, schermi non ancora rilevati).
-        """
         app = QApplication.instance()
         if not app:
             return
@@ -223,16 +167,6 @@ class OverlayWindow(QWidget):
         self.setGeometry(screen.virtualGeometry())
 
     def _set_click_through(self, enabled: bool) -> None:
-        """Abilita/disabilita il click-through dell'overlay.
-
-        Usa un approccio a due livelli per massima affidabilita':
-        1. Attributi Qt (WA_TransparentForMouseEvents + WA_InputMethodTransparent)
-        2. X11 XShape input region diretto via ctypes (per KDE/XWayland)
-
-        Args:
-            enabled: True per far passare gli eventi mouse attraverso.
-        """
-        # Livello 1: Attributi Qt
         self.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, enabled,
         )
@@ -242,23 +176,11 @@ class OverlayWindow(QWidget):
         if enabled:
             self.unsetCursor()
         else:
-            tool = self._controller.get_current_tool()
-            self._apply_tool_cursor(tool)
+            self._apply_tool_cursor(self._controller.get_current_tool())
 
-        # Livello 2: X11 XShape input region
         self._apply_x11_input_shape(enabled)
 
     def _apply_x11_input_shape(self, click_through: bool) -> None:
-        """Imposta l'input shape X11 per il click-through.
-
-        Su alcuni window manager (KDE Plasma con XWayland),
-        WA_TransparentForMouseEvents potrebbe non funzionare.
-        Questo metodo usa XShapeCombineRegion direttamente per
-        garantire che l'input shape sia impostata correttamente.
-
-        Args:
-            click_through: True per far passare tutti i click attraverso.
-        """
         libs = _load_x11_libs()
         if not libs:
             return
@@ -274,7 +196,6 @@ class OverlayWindow(QWidget):
                 win_id = ctypes.c_ulong(int(self.winId()))
 
                 if click_through:
-                    # Regione vuota = tutti i click passano attraverso
                     region = x11.XCreateRegion()
                     xext.XShapeCombineRegion(
                         display, win_id, _SHAPE_INPUT,
@@ -282,7 +203,6 @@ class OverlayWindow(QWidget):
                     )
                     x11.XDestroyRegion(region)
                 else:
-                    # Rimuovi input shape = finestra cattura i click
                     xext.XShapeCombineMask(
                         display, win_id, _SHAPE_INPUT,
                         0, 0, ctypes.c_ulong(0), _SHAPE_SET,
@@ -300,18 +220,12 @@ class OverlayWindow(QWidget):
             logger.debug("X11 input shape fallita: %s", exc)
 
     def _apply_tool_cursor(self, tool: ToolType) -> None:
-        """Imposta il cursore appropriato per lo strumento.
-
-        Args:
-            tool: tipo di strumento selezionato.
-        """
         if tool == ToolType.ERASER:
             self.setCursor(self._eraser_cursor)
         else:
             self.setCursor(Qt.CursorShape.CrossCursor)
 
     def _connect_events(self) -> None:
-        """Connette i segnali dell'event bus."""
         event_bus.subscribe("drawing_toggled", self._on_drawing_toggled)
         event_bus.subscribe("visibility_toggled", self._on_visibility_toggled)
         event_bus.subscribe("strokes_changed", self._on_strokes_changed)
@@ -321,7 +235,7 @@ class OverlayWindow(QWidget):
         event_bus.subscribe("tool_changed", self._on_tool_changed)
 
     def _register_shortcuts(self) -> None:
-        """Registra le scorciatoie da tastiera anche sull'overlay."""
+        """Mantiene le shortcut dell'overlay per la parita' del comportamento M1."""
         shortcuts = [
             (HotkeyDefaults.TOGGLE_DRAW, self._controller.toggle_drawing),
             (HotkeyDefaults.TOGGLE_VISIBILITY, self._controller.toggle_visibility),
@@ -330,34 +244,26 @@ class OverlayWindow(QWidget):
             (HotkeyDefaults.REDO, self._controller.redo),
         ]
         for key, slot in shortcuts:
-            sc = QShortcut(QKeySequence(key), self)
-            sc.activated.connect(slot)
-
-    # ── Gestione eventi ──────────────────────────────────────────────────
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.activated.connect(slot)
+            self._shortcuts.append(shortcut)
 
     def _on_drawing_toggled(self, active: bool, **kwargs) -> None:
-        """Reagisce al toggle della modalita' disegno."""
         self._set_click_through(not active)
         self.update()
         QTimer.singleShot(50, self.lower)
 
     def _on_visibility_toggled(self, visible: bool, **kwargs) -> None:
-        """Reagisce al toggle della visibilita' annotazioni."""
         self.update()
 
     def _on_strokes_changed(self, **kwargs) -> None:
-        """Reagisce alle modifiche dei tratti."""
         self.update()
 
     def _on_tool_changed(self, new_tool: ToolType, **kwargs) -> None:
-        """Reagisce al cambio strumento aggiornando il cursore."""
         if self._controller.is_drawing_active():
             self._apply_tool_cursor(new_tool)
 
-    # ── Eventi mouse ─────────────────────────────────────────────────────
-
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        """Inizia un nuovo tratto alla pressione del mouse."""
         if not self._controller.is_drawing_active():
             return
         if event.button() != Qt.MouseButton.LeftButton:
@@ -377,7 +283,6 @@ class OverlayWindow(QWidget):
         self.update()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        """Aggiunge punti al tratto durante il movimento."""
         if self._current_stroke is None:
             return
 
@@ -392,7 +297,6 @@ class OverlayWindow(QWidget):
         self.update()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        """Finalizza il tratto al rilascio del mouse."""
         if self._current_stroke is None:
             return
         if event.button() != Qt.MouseButton.LeftButton:
@@ -408,17 +312,13 @@ class OverlayWindow(QWidget):
         self._current_stroke = None
         self.update()
 
-    # ── Rendering ────────────────────────────────────────────────────────
-
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
-        """Renderizza tutti i tratti sull'overlay."""
         if not self._controller.is_visible():
             return
 
         painter = QPainter(self)
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
             strokes = self._controller.stroke_manager.get_strokes()
             DrawingEngine.render_strokes(painter, strokes)
 
@@ -427,8 +327,5 @@ class OverlayWindow(QWidget):
         finally:
             painter.end()
 
-    # ── Utility ──────────────────────────────────────────────────────────
-
     def refresh_geometry(self) -> None:
-        """Aggiorna la geometria dell'overlay (es. dopo cambio schermo)."""
         self._cover_all_screens()

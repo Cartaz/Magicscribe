@@ -3,18 +3,17 @@
 Responsabile della resa grafica dei tratti su un QPainter,
 gestendo i diversi tipi di strumento e le relative opzioni.
 
-NOTA: Questo modulo e' stato spostato da core/ a ui/ perche'
-importa PyQt6, violando §5.1.4b (core non deve importare Qt).
-Il livello core rimane framework-agnostic.
+Questo modulo risiede in ui/ perche' importa PySide6; il livello core
+rimane framework-agnostic.
 """
 
 from __future__ import annotations
 
-import math
 import logging
+import math
 
-from PyQt6.QtCore import Qt, QPointF, QRectF
-from PyQt6.QtGui import (
+from PySide6.QtCore import Qt, QPointF, QRectF
+from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QPainterPath, QPolygonF,
 )
 
@@ -27,18 +26,7 @@ _SO = QPainter.CompositionMode.CompositionMode_SourceOver
 
 
 def _qcolor(color_str: str) -> QColor:
-    """Converte una stringa colore in QColor.
-
-    Supporta formati: '#RRGGBB', '#AARRGGBB', 'rgba(r,g,b,a)'.
-    In caso di stringa malformata restituisce un QColor nero valido
-    invece di un QColor invalido che causerebbe artefatti in painting.
-
-    Args:
-        color_str: stringa colore.
-
-    Returns:
-        QColor corrispondente (mai invalido).
-    """
+    """Converte una stringa colore in QColor restituendo sempre un colore valido."""
     if not color_str:
         return QColor("#000000")
     if color_str.startswith("rgba("):
@@ -60,11 +48,7 @@ def _qcolor(color_str: str) -> QColor:
 
 
 class DrawingEngine:
-    """Motore di rendering per i tratti di disegno.
-
-    Fornisce metodi statici per renderizzare tratti su un QPainter,
-    gestendo ogni tipo di strumento con le sue opzioni specifiche.
-    """
+    """Motore di rendering per i tratti di disegno."""
 
     @staticmethod
     def render_stroke(painter: QPainter, stroke: Stroke) -> None:
@@ -93,7 +77,6 @@ class DrawingEngine:
 
     @staticmethod
     def _render_freehand(painter: QPainter, stroke: Stroke) -> None:
-        """Renderizza un tratto a mano libera (PEN)."""
         color = _qcolor(stroke.color)
         pen = QPen(
             QBrush(color), stroke.size, Qt.PenStyle.SolidLine,
@@ -111,7 +94,6 @@ class DrawingEngine:
 
     @staticmethod
     def _render_smooth(painter: QPainter, stroke: Stroke) -> None:
-        """Renderizza un tratto smussato (SMOOTH)."""
         color = _qcolor(stroke.color)
         pen = QPen(
             QBrush(color), stroke.size, Qt.PenStyle.SolidLine,
@@ -124,7 +106,6 @@ class DrawingEngine:
 
     @staticmethod
     def _render_eraser(painter: QPainter, stroke: Stroke) -> None:
-        """Renderizza un tratto di cancellazione."""
         painter.setCompositionMode(
             QPainter.CompositionMode.CompositionMode_Clear
         )
@@ -142,7 +123,6 @@ class DrawingEngine:
 
     @staticmethod
     def _render_line(painter: QPainter, stroke: Stroke) -> None:
-        """Renderizza una linea retta."""
         if len(stroke.points) < 2:
             return
         color = _qcolor(stroke.color)
@@ -156,7 +136,6 @@ class DrawingEngine:
 
     @staticmethod
     def _render_rect(painter: QPainter, stroke: Stroke) -> None:
-        """Renderizza un rettangolo."""
         if len(stroke.points) < 2:
             return
         color = _qcolor(stroke.color)
@@ -169,7 +148,6 @@ class DrawingEngine:
 
     @staticmethod
     def _render_circle(painter: QPainter, stroke: Stroke) -> None:
-        """Renderizza un cerchio/ellisse."""
         if len(stroke.points) < 2:
             return
         color = _qcolor(stroke.color)
@@ -188,7 +166,6 @@ class DrawingEngine:
     def _draw_arrow(
         painter: QPainter, stroke: Stroke, color: QColor,
     ) -> None:
-        """Disegna una punta di freccia all'estremita' del tratto."""
         p_end = stroke.points[-1]
         p_prev = stroke.points[-2] if len(stroke.points) >= 2 else stroke.points[-1]
         angle = math.atan2(p_end.y - p_prev.y, p_end.x - p_prev.x)
@@ -209,10 +186,6 @@ class DrawingEngine:
     def _smooth_path(
         points: list[Point], tolerance: float = 10.0,
     ) -> QPainterPath:
-        """Crea un percorso smussato con Bezier e RDP.
-
-        Gestisce in modo sicuro i casi degeneri (lista vuota o un punto).
-        """
         path = QPainterPath()
         if not points:
             return path

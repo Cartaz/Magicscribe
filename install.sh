@@ -1,62 +1,98 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # install.sh — Script di installazione locale per MagicScribe
-# Crea l'ambiente virtuale, installa le dipendenze e configura
+# Crea/ripara l'ambiente virtuale, installa le dipendenze e configura
 # il file .desktop per l'integrazione con KDE Plasma.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="magicscribe"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-# Rispetta XDG_CONFIG_HOME / XDG_STATE_HOME come fa il codice Python.
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 APP_CONFIG_DIR="${CONFIG_HOME}/${APP_NAME}"
 APP_STATE_DIR="${STATE_HOME}/${APP_NAME}"
-
-# Desktop file: segue XDG_DATA_HOME se definito.
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 DESKTOP_FILE="${DATA_HOME}/applications/${APP_NAME}.desktop"
 ICON_THEME_DIR="${DATA_HOME}/icons/hicolor"
+VENV_DIR="${SCRIPT_DIR}/.venv"
 
 echo "=== MagicScribe — Installazione locale ==="
 
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+    echo "ERRORE: ${PYTHON_BIN} non trovato." >&2
+    exit 1
+fi
+
+if ! "${PYTHON_BIN}" - <<'PY'
+import sys
+if sys.version_info < (3, 12):
+    raise SystemExit(f"Python 3.12+ richiesto, trovato {sys.version.split()[0]}")
+PY
+then
+    echo "ERRORE: MagicScribe richiede Python 3.12 o superiore." >&2
+    exit 1
+fi
+
 # 1. Ambiente virtuale
-echo "[1/5] Creazione ambiente virtuale..."
-if [ ! -d "${SCRIPT_DIR}/.venv" ]; then
-    python3 -m venv "${SCRIPT_DIR}/.venv"
+echo "[1/6] Verifica ambiente virtuale..."
+if [ -d "${VENV_DIR}" ]; then
+    if [ ! -x "${VENV_DIR}/bin/python" ] || ! "${VENV_DIR}/bin/python" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 12) else 1)
+PY
+    then
+        echo "     Ambiente virtuale non valido: ricreazione..."
+        rm -rf "${VENV_DIR}"
+    fi
+fi
+
+if [ ! -d "${VENV_DIR}" ]; then
+    "${PYTHON_BIN}" -m venv "${VENV_DIR}"
     echo "     Ambiente virtuale creato."
 else
-    echo "     Ambiente virtuale gia' esistente."
+    echo "     Ambiente virtuale valido."
 fi
 
 # 2. Dipendenze
-echo "[2/5] Installazione dipendenze..."
-"${SCRIPT_DIR}/.venv/bin/python" -m pip install --upgrade pip --quiet
-"${SCRIPT_DIR}/.venv/bin/python" -m pip install -r "${SCRIPT_DIR}/requirements.txt" --quiet
+echo "[2/6] Installazione dipendenze..."
+"${VENV_DIR}/bin/python" -m pip install --upgrade pip --quiet
+"${VENV_DIR}/bin/python" -m pip install -r "${SCRIPT_DIR}/requirements.txt" --quiet
 echo "     Dipendenze installate."
 
-# 3. Directory di configurazione (rispetta XDG)
-echo "[3/5] Creazione directory di configurazione..."
-mkdir -p "${APP_CONFIG_DIR}"
-mkdir -p "${APP_STATE_DIR}"
+# 3. Verifica runtime Qt/PySide6
+echo "[3/6] Verifica runtime PySide6/Qt..."
+"${VENV_DIR}/bin/python" - <<'PY'
+from PySide6.QtCore import qVersion
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtWidgets import QApplication
+
+version = tuple(int(part) for part in qVersion().split(".")[:3])
+if version < (6, 11, 0):
+    raise SystemExit(f"Qt 6.11+ richiesto, trovato {qVersion()}")
+
+assert QQmlApplicationEngine is not None
+assert QApplication is not None
+print(f"     PySide6/Qt {qVersion()} OK")
+PY
+
+# 4. Directory di configurazione
+echo "[4/6] Creazione directory di configurazione..."
+mkdir -p "${APP_CONFIG_DIR}" "${APP_STATE_DIR}"
 echo "     Directory create (${APP_CONFIG_DIR}, ${APP_STATE_DIR})."
 
-# 4. Icone nel tema di sistema (PNG pre-renderizzate)
-echo "[4/5] Installazione icone nel tema di sistema..."
-# Installa le icone PNG pre-renderizzate nella gerarchia hicolor.
-# KDE Plasma le trovera' automaticamente per taskbar, menu e alt+tab.
-# Le PNG evitano completamente l'errore "qt.svg.draw: buffer size too big".
+# 5. Icone nel tema di sistema
+echo "[5/6] Installazione icone nel tema di sistema..."
 for size in 16 22 24 32 48 64 128 256 512; do
     src="${SCRIPT_DIR}/assets/icons/png/magicscribe_${size}.png"
-    if [ -f "$src" ]; then
+    if [ -f "${src}" ]; then
         dir="${ICON_THEME_DIR}/${size}x${size}/apps"
-        mkdir -p "$dir"
-        cp -f "$src" "${dir}/magicscribe.png"
+        mkdir -p "${dir}"
+        cp -f "${src}" "${dir}/magicscribe.png"
     fi
 done
-# Copia anche la versione SVG scalabile (se presente) come fallback
-# per temi che la preferiscono.
+
 SVG_SRC="${SCRIPT_DIR}/assets/icons/magicscribe.svg"
 if [ -f "${SVG_SRC}" ]; then
     mkdir -p "${ICON_THEME_DIR}/scalable/apps"
@@ -65,12 +101,11 @@ else
     echo "     (SVG non trovato, salto installazione scalable)"
 fi
 
-# Aggiorna la cache delle icone
 gtk-update-icon-cache "${ICON_THEME_DIR}" 2>/dev/null || true
 echo "     Icone installate nel tema hicolor."
 
-# 5. File .desktop
-echo "[5/5] Creazione file .desktop..."
+# 6. File .desktop
+echo "[6/6] Creazione file .desktop..."
 mkdir -p "$(dirname "${DESKTOP_FILE}")"
 
 cat > "${DESKTOP_FILE}" << EOF
@@ -82,7 +117,7 @@ Name[it]=MagicScribe
 Comment=On-screen annotation tool
 Comment[it]=Strumento di annotazione sullo schermo
 Icon=magicscribe
-Exec=${SCRIPT_DIR}/.venv/bin/python ${SCRIPT_DIR}/main.py
+Exec=${VENV_DIR}/bin/python ${SCRIPT_DIR}/main.py
 Terminal=false
 Categories=Graphics;Utility;
 Keywords=annotation;drawing;screenshot;presentation;
@@ -90,23 +125,9 @@ StartupWMClass=MagicScribe
 EOF
 
 echo "     File .desktop creato in ${DESKTOP_FILE}"
-
-# Aggiorna il database desktop
 update-desktop-database "$(dirname "${DESKTOP_FILE}")" 2>/dev/null || true
 
 echo ""
-echo "=== Installazione completata! ==="
-echo ""
+echo "=== Installazione completata ==="
 echo "Per avviare MagicScribe:"
-echo "  ${SCRIPT_DIR}/.venv/bin/python ${SCRIPT_DIR}/main.py"
-echo ""
-echo "Oppure cercare 'MagicScribe' nel menu delle applicazioni."
-echo ""
-echo "Scorciatoie da tastiera:"
-echo "  F9          — Attiva/Disattiva disegno"
-echo "  Ctrl+Shift+F9 — Mostra/Nascondi annotazioni"
-echo "  Shift+F9    — Cancella schermo"
-echo "  F8          — Annulla tratto"
-echo "  Shift+F8    — Ripristina tratto"
-echo "  Ctrl+M      — Riduci a icona volante"
-echo "  Ctrl+Q      — Esci dall'applicazione"
+echo "  ${VENV_DIR}/bin/python ${SCRIPT_DIR}/main.py"

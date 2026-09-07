@@ -2,11 +2,11 @@
 pkgname=magicscribe
 pkgver=2.0.0
 pkgrel=1
-pkgdesc="On-screen annotation tool for KDE Plasma / Breeze Dark"
+pkgdesc="On-screen annotation tool for KDE Plasma"
 arch=('any')
-url="https://github.com/magicscribe/magicscribe"
+url="https://github.com/Cartaz/Magicscribe"
 license=('GPL3')
-depends=('python>=3.12' 'python-pyqt6>=6.5.0' 'noto-fonts' 'ttf-sarasa-mono-sc')
+depends=('python>=3.12' 'pyside6>=6.11' 'noto-fonts' 'ttf-sarasa-mono-sc')
 makedepends=('python-setuptools')
 source=("$pkgname-$pkgver.tar.gz")
 sha256sums=('SKIP')

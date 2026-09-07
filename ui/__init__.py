@@ -5,8 +5,8 @@ importati direttamente, ad esempio:
 
     from ui.main_window import MainWindow
 
-Non viene fatto import eager qui per evitare di caricare PyQt6
-quando si importa un sottomodolo non-Qt come ui.geometry_utils.
+Non viene fatto import eager qui per evitare di caricare PySide6
+quando si importa un sottomodulo non-Qt come ui.geometry_utils.
 """
 
 __all__ = [
