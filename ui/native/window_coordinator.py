@@ -14,14 +14,14 @@ logger = logging.getLogger(__name__)
 class WindowCoordinator:
     """Possiede la policy di visibilita', posizione e z-order della shell Qt.
 
-    QML descrive le finestre e le gesture; la policy tra pannello, floating
-    palette e overlay resta qui, senza duplicare stato operativo in QML.
+    Riceve solo finestre Qt; non conosce renderer, widget legacy o regole di
+    dominio. Pannello e floating palette restano presentazione QML.
     """
 
     _FLOATING_MARGIN = 20
 
-    def __init__(self, overlay) -> None:
-        self._overlay = overlay
+    def __init__(self, overlay_window: QWindow) -> None:
+        self._overlay_window = overlay_window
         self._control_window: QWindow | None = None
         self._floating_window: QWindow | None = None
         self._last_control_pos: QPoint | None = None
@@ -32,7 +32,6 @@ class WindowCoordinator:
 
     def set_floating_window(self, window: QWindow) -> None:
         self._floating_window = window
-        self._overlay.set_floating_window(window)
 
     def show_control_panel(self) -> None:
         window = self._control_window
@@ -78,7 +77,7 @@ class WindowCoordinator:
         return floating is not None and floating.isVisible()
 
     def ensure_z_order(self) -> None:
-        self._overlay.lower()
+        self._overlay_window.lower()
 
         control = self._control_window
         if control is not None and control.isVisible():
@@ -93,6 +92,12 @@ class WindowCoordinator:
         floating = self._floating_window
         if floating is not None:
             floating.hide()
+
+        control = self._control_window
+        if control is not None:
+            control.hide()
+
+        self._overlay_window.hide()
 
     def quit_application(self) -> None:
         self.shutdown()
