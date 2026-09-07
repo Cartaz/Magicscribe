@@ -1,4 +1,4 @@
-"""Smoke test offscreen del modulo QML MagicScribe."""
+"""Smoke test offscreen della shell Qt Quick/QML MagicScribe."""
 
 from __future__ import annotations
 
@@ -20,25 +20,25 @@ from ui.adapters.shell_adapter import ShellAdapter
 from ui.adapters.tool_adapter import ToolAdapter
 from ui.models.tool_list_model import ToolListModel
 from ui.native.window_coordinator import WindowCoordinator
-from ui.overlay_window import OverlayWindow
+from ui.quick.overlay_surface import OverlaySurface
 
 _APP = QApplication.instance() or QApplication([])
 
 
 def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
-    """Carica entrambe le finestre QML e verifica panel -> floating -> restore."""
+    """Carica overlay Quick + due finestre QML e verifica il lifecycle shell."""
     event_bus.clear()
     settings = Settings(path=tmp_path / "qml_settings.json")
     controller = AppController(settings)
-    overlay = OverlayWindow(controller)
-    coordinator = WindowCoordinator(overlay)
-
     drawing_adapter = DrawingAdapter(controller)
     tool_adapter = ToolAdapter(controller)
-    shell_adapter = ShellAdapter(coordinator)
     tool_model = ToolListModel()
 
     QQuickWindow.setDefaultAlphaBuffer(True)
+    overlay_surface = OverlaySurface(drawing_adapter, tool_adapter)
+    coordinator = WindowCoordinator(overlay_surface.window)
+    shell_adapter = ShellAdapter(coordinator)
+
     engine = QQmlApplicationEngine()
     qml_root = Path(__file__).resolve().parents[2] / "ui" / "qml"
     engine.addImportPath(str(qml_root))
@@ -74,17 +74,21 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
         assert control_window.objectName() == "controlPanel"
         assert control_window.isVisible() is False
 
+        assert overlay_surface.window.objectName() == "overlayWindow"
+        assert overlay_surface.canvas.objectName() == "drawingCanvas"
+
         assert isinstance(floating_object, QWindow)
         floating_window = floating_object
         assert floating_window.objectName() == "floatingPalette"
         assert floating_window.isVisible() is False
 
+        overlay_surface.show()
         coordinator.set_control_window(control_window)
         coordinator.set_floating_window(floating_window)
-        assert overlay._floating_surface is floating_window
 
         coordinator.show_control_panel()
         _APP.processEvents()
+        assert overlay_surface.window.isVisible() is True
         assert control_window.isVisible() is True
         assert floating_window.isVisible() is False
         assert coordinator.is_minimized_to_floating() is False
@@ -101,14 +105,11 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
         assert floating_window.isVisible() is False
         assert coordinator.is_minimized_to_floating() is False
     finally:
-        roots = engine.rootObjects()
-        if roots:
-            roots[0].hide()
         if isinstance(floating_object, QWindow):
             floating_object.hide()
             floating_object.deleteLater()
         coordinator.shutdown()
-        overlay.deleteLater()
+        overlay_surface.window.deleteLater()
         floating_component.deleteLater()
         engine.deleteLater()
         event_bus.clear()
