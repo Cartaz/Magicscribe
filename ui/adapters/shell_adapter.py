@@ -51,6 +51,10 @@ class ShellAdapter(QObject):
     def minimize_to_floating(self) -> None:
         self._coordinator.minimize_to_floating()
 
+    @Slot(name="restoreControlPanel")
+    def restore_control_panel(self) -> None:
+        self._coordinator.restore_control_panel()
+
     @Slot(name="quitApplication")
     def quit_application(self) -> None:
         self._coordinator.quit_application()
