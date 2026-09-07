@@ -36,7 +36,7 @@ then
 fi
 
 # 1. Ambiente virtuale
-echo "[1/6] Verifica ambiente virtuale..."
+echo "[1/7] Verifica ambiente virtuale..."
 if [ -d "${VENV_DIR}" ]; then
     if [ ! -x "${VENV_DIR}/bin/python" ] || ! "${VENV_DIR}/bin/python" - <<'PY' >/dev/null 2>&1
 import sys
@@ -56,13 +56,13 @@ else
 fi
 
 # 2. Dipendenze
-echo "[2/6] Installazione dipendenze..."
+echo "[2/7] Installazione dipendenze..."
 "${VENV_DIR}/bin/python" -m pip install --upgrade pip --quiet
 "${VENV_DIR}/bin/python" -m pip install -r "${SCRIPT_DIR}/requirements.txt" --quiet
 echo "     Dipendenze installate."
 
 # 3. Verifica runtime Qt/PySide6
-echo "[3/6] Verifica runtime PySide6/Qt..."
+echo "[3/7] Verifica runtime PySide6/Qt..."
 "${VENV_DIR}/bin/python" - <<'PY'
 from PySide6.QtCore import qVersion
 from PySide6.QtQml import QQmlApplicationEngine
@@ -77,13 +77,24 @@ assert QApplication is not None
 print(f"     PySide6/Qt {qVersion()} OK")
 PY
 
-# 4. Directory di configurazione
-echo "[4/6] Creazione directory di configurazione..."
+# 4. Verifica modulo QML
+echo "[4/7] Verifica sorgenti QML..."
+if [ ! -x "${VENV_DIR}/bin/pyside6-qmllint" ]; then
+    echo "ERRORE: pyside6-qmllint non disponibile nell'ambiente virtuale." >&2
+    exit 1
+fi
+"${VENV_DIR}/bin/pyside6-qmllint" \
+    -I "${SCRIPT_DIR}/ui/qml" \
+    "${SCRIPT_DIR}"/ui/qml/MagicScribe/*.qml
+echo "     Modulo QML valido."
+
+# 5. Directory di configurazione
+echo "[5/7] Creazione directory di configurazione..."
 mkdir -p "${APP_CONFIG_DIR}" "${APP_STATE_DIR}"
 echo "     Directory create (${APP_CONFIG_DIR}, ${APP_STATE_DIR})."
 
-# 5. Icone nel tema di sistema
-echo "[5/6] Installazione icone nel tema di sistema..."
+# 6. Icone nel tema di sistema
+echo "[6/7] Installazione icone nel tema di sistema..."
 for size in 16 22 24 32 48 64 128 256 512; do
     src="${SCRIPT_DIR}/assets/icons/png/magicscribe_${size}.png"
     if [ -f "${src}" ]; then
@@ -104,8 +115,8 @@ fi
 gtk-update-icon-cache "${ICON_THEME_DIR}" 2>/dev/null || true
 echo "     Icone installate nel tema hicolor."
 
-# 6. File .desktop
-echo "[6/6] Creazione file .desktop..."
+# 7. File .desktop
+echo "[7/7] Creazione file .desktop..."
 mkdir -p "$(dirname "${DESKTOP_FILE}")"
 
 cat > "${DESKTOP_FILE}" << EOF

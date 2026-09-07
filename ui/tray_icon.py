@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QBrush, QPen, QAction
@@ -34,16 +34,16 @@ def _create_tray_icon() -> QIcon:
 
 
 class TrayIcon:
-    """Gestore dell'icona nel system tray e del menu contestuale."""
+    """Gestore sottile dell'icona nel system tray e del menu contestuale."""
 
     def __init__(
         self,
         controller: AppController,
-        main_window,
+        show_control_panel: Callable[[], None],
         parent: QWidget | None = None,
     ) -> None:
         self._controller = controller
-        self._main_window = main_window
+        self._show_control_panel = show_control_panel
         self._tray = QSystemTrayIcon(_create_tray_icon(), parent)
         self._build_menu()
         self._connect_signals()
@@ -54,7 +54,7 @@ class TrayIcon:
         menu = QMenu()
 
         act_show = QAction("Mostra finestra", self._tray)
-        act_show.triggered.connect(self._show_main_window)
+        act_show.triggered.connect(self._show_control_panel)
 
         act_toggle = QAction("Attiva/Disattiva disegno (F9)", self._tray)
         act_toggle.triggered.connect(self._controller.toggle_drawing)
@@ -84,18 +84,7 @@ class TrayIcon:
         self, reason: QSystemTrayIcon.ActivationReason,
     ) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self._show_main_window()
-
-    def _show_main_window(self) -> None:
-        if (
-            hasattr(self._main_window, "is_minimized_to_floating")
-            and self._main_window.is_minimized_to_floating()
-        ):
-            self._main_window.restore_from_floating()
-        else:
-            self._main_window.show()
-            self._main_window.activateWindow()
-            self._main_window.raise_()
+            self._show_control_panel()
 
     def show_message(self, title: str, message: str) -> None:
         self._tray.showMessage(

@@ -54,5 +54,8 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q config core ui main.py
 
+      - name: Lint QML
+        run: pyside6-qmllint -I ui/qml ui/qml/MagicScribe/*.qml
+
       - name: Run tests
         run: python -m pytest -q
