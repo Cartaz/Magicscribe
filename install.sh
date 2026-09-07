@@ -84,9 +84,10 @@ if [ ! -x "${VENV_DIR}/bin/pyside6-qmllint" ]; then
     exit 1
 fi
 "${VENV_DIR}/bin/pyside6-qmllint" \
+    --max-warnings 0 \
     -I "${SCRIPT_DIR}/ui/qml" \
     "${SCRIPT_DIR}"/ui/qml/MagicScribe/*.qml
-echo "     Modulo QML valido."
+echo "     Modulo QML valido e senza warning."
 
 # 5. Directory di configurazione
 echo "[5/7] Creazione directory di configurazione..."
