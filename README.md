@@ -1,1 +1,34 @@
-# Magicscribe
+# MagicScribe
+
+MagicScribe is a local on-screen annotation application for KDE Plasma.
+
+## Runtime architecture
+
+Production uses `Python 3.12+ -> PySide6 / Qt 6.11+ -> QApplication + QQmlApplicationEngine -> Qt Quick/QML`.
+
+Python owns canonical state, persistence, drawing history, desktop integration and native services. QML owns presentation, animation and temporary interaction state. The overlay uses `QQuickWindow` plus a Python `QQuickPaintedItem`, reusing the QPainter renderer.
+
+The QML boundary is intentionally small: `DrawingAdapter`, `ToolAdapter`, `ShellAdapter` and `ToolListModel`.
+
+## Development checks
+
+```bash
+python -m compileall -q config core ui main.py
+pyside6-qmllint --max-warnings 0 -I ui/qml ui/qml/MagicScribe/*.qml
+python -m pytest -q
+bash -n install.sh
+```
+
+## Deliberate migration gate
+
+The production shell is Qt Quick, but native KDE parity is not yet considered demonstrated. On Wayland `main.py` currently forces Qt `xcb`/XWayland. The old QWidget/X11 implementation remains in-tree only as a parity reference.
+
+Do not remove it until GitHub issue #6 is completed on CachyOS/KDE/KWin. The gate covers global shortcuts, click-through, z-order, floating drag, cursors, multi-monitor geometry and Linux PSS from `/proc/<pid>/smaps_rollup`.
+
+The floating palette intentionally uses `WindowDoesNotAcceptFocus` while this gate is open so it does not steal focus from the application being annotated. Keyboard/focus behavior must be evaluated in the same desktop parity pass.
+
+## Visual system
+
+Production QML uses the dark-neumorphic tokens centralized in `ui/qml/MagicScribe/Theme.qml`: surface `#141414`, accent `#ff6600`, Noto Sans, radii `28 / 22 / 16 / 12`.
+
+`config/theme.py`, `ui/styles/` and the QWidget modules are legacy-only and must not be imported by the production bootstrap.

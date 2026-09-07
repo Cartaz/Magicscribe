@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import logging
-
 from PySide6.QtCore import QObject, Property, Signal, Slot
-
 from core.app_controller import AppController
 from core.event_bus import event_bus
 from core.models import ToolType
@@ -23,8 +21,6 @@ def _tool_from_id(tool_id: str) -> ToolType | None:
 
 
 class ToolAdapter(QObject):
-    """Espone a QML solo lo stato dello strumento attivo e le sue mutazioni."""
-
     currentToolChanged = Signal()
     configChanged = Signal()
 
@@ -36,22 +32,18 @@ class ToolAdapter(QObject):
 
     def _get_current_tool(self) -> str:
         return self._controller.get_current_tool().name.lower()
-
     currentTool = Property(str, _get_current_tool, notify=currentToolChanged)
 
     def _get_current_color(self) -> str:
         return self._controller.get_current_config().color
-
     currentColor = Property(str, _get_current_color, notify=configChanged)
 
     def _get_current_size(self) -> float:
         return float(self._controller.get_current_config().size)
-
     currentSize = Property(float, _get_current_size, notify=configChanged)
 
     def _get_color_available(self) -> bool:
         return self._controller.get_current_tool() != ToolType.ERASER
-
     colorAvailable = Property(bool, _get_color_available, notify=currentToolChanged)
 
     @Slot(str, name="selectTool")
@@ -67,14 +59,19 @@ class ToolAdapter(QObject):
         tool = self._controller.get_current_tool()
         if tool == ToolType.ERASER:
             return
+        setting_key = f"{tool.name.lower()}_color"
+        if not self._controller.settings.is_valid(setting_key, color):
+            logger.warning("ToolAdapter: colore non valido: %r", color)
+            return
         self._controller.tool_manager.set_color(tool, color)
 
     @Slot(float, name="setSize")
     def set_size(self, size: float) -> None:
-        if not 1.0 <= size <= 100.0:
+        tool = self._controller.get_current_tool()
+        setting_key = "eraser_size" if tool == ToolType.ERASER else f"{tool.name.lower()}_size"
+        if not self._controller.settings.is_valid(setting_key, size):
             logger.warning("ToolAdapter: dimensione fuori range: %r", size)
             return
-        tool = self._controller.get_current_tool()
         self._controller.tool_manager.set_size(tool, size)
 
     def _on_tool_changed(self, **_kwargs) -> None:

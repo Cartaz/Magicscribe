@@ -17,19 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_tool_type(value: object) -> ToolType:
-    """Converte un valore (stringa/ToolType) in ToolType con fallback PEN.
-
-    Tollerante rispetto a valori salvati corrotti o non validi: in caso
-    di errore restituisce ToolType.PEN e logga un warning, invece di
-    propagare un'eccezione che bloccherebbe l'avvio dell'app.
-
-    Args:
-        value: valore da convertire (tipicamente una stringa letta
-            dal file impostazioni).
-
-    Returns:
-        Il ToolType corrispondente, oppure ToolType.PEN se non valido.
-    """
+    """Converte un valore (stringa/ToolType) in ToolType con fallback PEN."""
     if isinstance(value, ToolType):
         return value
     if isinstance(value, str):
@@ -49,13 +37,7 @@ def _parse_tool_type(value: object) -> ToolType:
 
 
 class ToolManager:
-    """Gestisce gli strumenti di disegno e le loro configurazioni.
-
-    Attributes:
-        _settings: riferimento al gestore impostazioni.
-        _current_tool: strumento attualmente selezionato.
-        _configs: mappa ToolType -> ToolConfig.
-    """
+    """Gestisce gli strumenti di disegno e le loro configurazioni."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -108,65 +90,57 @@ class ToolManager:
         return self._configs[self._current_tool]
 
     def config_for(self, tool_type: ToolType) -> ToolConfig:
-        """Restituisce la configurazione di uno strumento specifico.
-
-        Args:
-            tool_type: tipo di strumento.
-
-        Returns:
-            La configurazione dello strumento richiesto.
-        """
+        """Restituisce la configurazione di uno strumento specifico."""
         return self._configs[tool_type]
 
     def set_tool(self, tool_type: ToolType) -> None:
-        """Seleziona uno strumento come attivo.
-
-        Args:
-            tool_type: tipo di strumento da selezionare.
-        """
+        """Seleziona uno strumento come attivo."""
         if tool_type == self._current_tool:
+            return
+        if not self._settings.set("last_tool", tool_type.name.lower()):
+            logger.warning("Cambio strumento rifiutato: %s", tool_type.name)
             return
         old = self._current_tool
         self._current_tool = tool_type
-        self._settings.set("last_tool", tool_type.name.lower())
         logger.info("Strumento cambiato: %s -> %s", old.name, tool_type.name)
         event_bus.emit("tool_changed", old_tool=old, new_tool=tool_type)
 
     def set_color(self, tool_type: ToolType, color: str) -> None:
-        """Imposta il colore di uno strumento.
-
-        La gomma (ERASER) non ha colore: la chiamata viene ignorata
-        per evitare di scrivere una chiave di impostazione inesistente.
-
-        Args:
-            tool_type: tipo di strumento.
-            color: colore in formato hex.
-        """
+        """Imposta il colore validato di uno strumento."""
         if tool_type == ToolType.ERASER:
             logger.debug("set_color ignorato per ERASER (nessun colore)")
             return
-        self._configs[tool_type] = replace(
-            self._configs[tool_type], color=color,
-        )
+
         setting_key = f"{tool_type.name.lower()}_color"
-        self._settings.set(setting_key, color)
+        if not self._settings.set(setting_key, color):
+            logger.warning("Colore rifiutato per %s: %r", tool_type.name, color)
+            return
+
+        normalized = self._settings.get(setting_key)
+        if self._configs[tool_type].color == normalized:
+            return
+        self._configs[tool_type] = replace(
+            self._configs[tool_type], color=normalized,
+        )
         event_bus.emit("tool_config_changed", tool_type=tool_type)
 
     def set_size(self, tool_type: ToolType, size: float) -> None:
-        """Imposta la dimensione di uno strumento.
-
-        Args:
-            tool_type: tipo di strumento.
-            size: dimensione in pixel.
-        """
-        self._configs[tool_type] = replace(
-            self._configs[tool_type], size=size,
+        """Imposta la dimensione validata di uno strumento."""
+        setting_key = (
+            "eraser_size"
+            if tool_type == ToolType.ERASER
+            else f"{tool_type.name.lower()}_size"
         )
-        if tool_type == ToolType.ERASER:
-            self._settings.set("eraser_size", int(size))
-        else:
-            setting_key = f"{tool_type.name.lower()}_size"
-            self._settings.set(setting_key, int(size))
+        if not self._settings.set(setting_key, size):
+            logger.warning("Dimensione rifiutata per %s: %r", tool_type.name, size)
+            return
+
+        normalized = float(self._settings.get(setting_key))
+        if float(self._configs[tool_type].size) == normalized:
+            return
+        self._configs[tool_type] = replace(
+            self._configs[tool_type], size=normalized,
+        )
         event_bus.emit("tool_config_changed", tool_type=tool_type)
 
     def all_tools(self) -> list[ToolType]:

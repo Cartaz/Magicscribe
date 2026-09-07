@@ -1,19 +1,8 @@
-"""Moduli dell'interfaccia utente di MagicScribe.
+"""Layer UI e integrazione Qt di MagicScribe.
 
-I sottomoduli (MainWindow, OverlayWindow, ecc.) devono essere
-importati direttamente, ad esempio:
-
-    from ui.main_window import MainWindow
-
-Non viene fatto import eager qui per evitare di caricare PySide6
-quando si importa un sottomodulo non-Qt come ui.geometry_utils.
+La shell di produzione vive in `ui.qml`, gli adapter in `ui.adapters`, le
+integrazioni desktop in `ui.native` e l'overlay Qt Quick in `ui.quick`.
+I moduli QWidget storici restano importabili solo come riferimento di parita'.
 """
 
-__all__ = [
-    "main_window",
-    "overlay_window",
-    "drawing_engine",
-    "tray_icon",
-    "event_bridge",
-    "geometry_utils",
-]
+__all__ = ["adapters", "drawing_engine", "models", "native", "qml", "quick", "tray_icon"]

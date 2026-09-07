@@ -64,12 +64,25 @@ def test_tool_adapter_rejects_invalid_ui_values(tmp_path) -> None:
     event_bus.clear()
     controller = _controller(tmp_path)
     adapter = ToolAdapter(controller)
+    original_color = adapter.currentColor
 
     adapter.select_tool("laser")
     adapter.set_size(0.0)
+    adapter.set_color("not-a-color")
 
     assert controller.get_current_tool() == ToolType.PEN
     assert adapter.currentSize == 5.0
+    assert adapter.currentColor == original_color
+    event_bus.clear()
+
+
+def test_tool_adapter_accepts_renderer_supported_rgba(tmp_path) -> None:
+    event_bus.clear()
+    controller = _controller(tmp_path)
+    adapter = ToolAdapter(controller)
+
+    adapter.set_color("rgba(12, 34, 56, 0.5)")
+    assert adapter.currentColor == "rgba(12,34,56,0.5)"
     event_bus.clear()
 
 

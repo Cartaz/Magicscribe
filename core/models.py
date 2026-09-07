@@ -22,10 +22,9 @@ class ToolType(Enum):
 
 
 class DrawingState(Enum):
-    """Stato del motore di disegno."""
+    """Stato operativo del motore di disegno."""
     INACTIVE = auto()    # Disegno disattivato
     ACTIVE = auto()      # Disegno attivo, pronto per disegnare
-    DRAWING = auto()     # Riservato a eventuali workflow di dominio futuri
 
 
 @dataclass(frozen=True)

@@ -17,8 +17,8 @@ from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QPainterPath, QPolygonF,
 )
 
+from core.geometry import rdp_simplify
 from core.models import Stroke, ToolType, Point
-from ui.geometry_utils import rdp_simplify
 
 logger = logging.getLogger(__name__)
 
