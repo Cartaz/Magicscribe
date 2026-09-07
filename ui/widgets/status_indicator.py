@@ -1,29 +1,16 @@
-"""Indicatore di stato animato (punto colorato).
-
-Mostra lo stato di un processo con un punto colorato
-e animazione pulsante quando attivo.
-"""
+"""Indicatore di stato animato (punto colorato)."""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QPropertyAnimation, QSize, pyqtProperty, QEasingCurve
-from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent
-from PyQt6.QtWidgets import QWidget
+from PySide6.QtCore import Qt, QPropertyAnimation, QSize, Property, QEasingCurve
+from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPaintEvent
+from PySide6.QtWidgets import QWidget
 
 from config.theme import ThemeColors as C
 
 
 class StatusIndicator(QWidget):
-    """Indicatore di stato visivo con punto colorato e animazione.
-
-    Supporta quattro stati: running (verde), error (arancione),
-    stopped (grigio), paused (teal). Quando attivo, il punto
-    pulsa con animazione di opacita'.
-
-    Attributes:
-        _color: colore corrente dell'indicatore.
-        _opacity: opacita' corrente per l'animazione.
-    """
+    """Indicatore di stato visivo con animazione pulsante."""
 
     STATE_COLORS = {
         "running": C.SUCCESS,
@@ -43,11 +30,6 @@ class StatusIndicator(QWidget):
         self.setFixedSize(QSize(size + 4, size + 4))
 
     def set_state(self, state: str) -> None:
-        """Imposta lo stato dell'indicatore.
-
-        Args:
-            state: uno tra 'running', 'error', 'stopped', 'paused'.
-        """
         color_hex = self.STATE_COLORS.get(state, C.TEXT_DISABLED)
         self._color = QColor(color_hex)
 
@@ -62,32 +44,25 @@ class StatusIndicator(QWidget):
         self.update()
 
     def _start_pulse_animation(self) -> None:
-        """Avvia l'animazione pulsante (opacita' 0.5-1.0).
-
-        Usa easing curve come specificato in §3.5
-        (ease-in-out per transizioni di stato).
-        """
         self._anim = QPropertyAnimation(self, b"pulse_opacity")
         self._anim.setDuration(1500)
         self._anim.setStartValue(0.5)
         self._anim.setEndValue(1.0)
         self._anim.setEasingCurve(QEasingCurve.Type.InOutSine)
-        self._anim.setLoopCount(-1)  # infinito
+        self._anim.setLoopCount(-1)
         self._anim.start()
 
-    @pyqtProperty(float)
+    @Property(float)
     def pulse_opacity(self) -> float:
         """Opacita' corrente per l'animazione pulsante."""
         return self._opacity
 
     @pulse_opacity.setter
     def pulse_opacity(self, value: float) -> None:
-        """Imposta l'opacita' per l'animazione e ridisegna."""
         self._opacity = value
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
-        """Disegna il punto colorato dell'indicatore."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         color = QColor(self._color)

@@ -16,7 +16,7 @@ funzionamento completo, adottiamo una strategia a due livelli:
    primario per il drag, che funziona su qualsiasi compositor.
 
 Il QT_QPA_PLATFORM DEVE essere impostato PRIMA di importare
-qualsiasi modulo PyQt6.
+qualsiasi modulo PySide6.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import os
 import sys
 
 # Forza il backend X11/XWayland su Wayland.
-# DEVE essere impostato PRIMA di importare PyQt6.
+# DEVE essere impostato PRIMA di importare PySide6.
 _is_wayland = (
     os.environ.get("XDG_SESSION_TYPE") == "wayland"
     or bool(os.environ.get("WAYLAND_DISPLAY"))
@@ -37,9 +37,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt, QTimer, QSize
-from PyQt6.QtGui import QIcon, QPixmap
+from PySide6.QtCore import QTimer, QSize
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
 
 from config.constants import AppMeta, PathDefaults, LogDefaults
 from config.settings import Settings
@@ -95,42 +95,31 @@ def main() -> None:
         os.environ.get("XDG_SESSION_TYPE", "sconosciuto"),
     )
 
-    # App Qt
     app = QApplication(sys.argv)
     app.setApplicationName(AppMeta.NAME)
     app.setOrganizationName(AppMeta.ORG_NAME)
     app.setApplicationDisplayName(AppMeta.DISPLAY_NAME)
-    # CRITICO per KDE: associa la finestra al file .desktop.
-    # Senza questo, KDE mostra un'icona generica nella taskbar
-    # e non riesce a raggruppare le finestre sotto un'unica voce.
-    # NOTA: il nome NON deve includere il suffisso .desktop.
     app.setDesktopFileName(AppMeta.ORG_NAME)
-    # Imposta l'icona dell'applicazione usando PNG pre-renderizzati.
-    # Questo evita completamente l'errore "qt.svg.draw: The requested
-    # buffer size is too big" che si verifica quando Qt tenta di
-    # renderizzare l'SVG complesso a dimensioni molto grandi.
-    # Le icone PNG sono generate da assets/icons/magicscribe.svg.
-    _app_dir = Path(__file__).resolve().parent
-    _png_dir = _app_dir / "assets" / "icons" / "png"
-    _svg_path = _app_dir / "assets" / "icons" / "magicscribe.svg"
-    if _png_dir.exists():
+
+    app_dir = Path(__file__).resolve().parent
+    png_dir = app_dir / "assets" / "icons" / "png"
+    svg_path = app_dir / "assets" / "icons" / "magicscribe.svg"
+    if png_dir.exists():
         icon = QIcon()
         for size in (16, 22, 24, 32, 48, 64, 128, 256, 512):
-            png_path = _png_dir / f"magicscribe_{size}.png"
+            png_path = png_dir / f"magicscribe_{size}.png"
             if png_path.exists():
                 icon.addFile(str(png_path), size=QSize(size, size))
         if not icon.isNull():
             app.setWindowIcon(icon)
         else:
-            app.setWindowIcon(QIcon(str(_svg_path)))
-    elif _svg_path.exists():
-        app.setWindowIcon(QIcon(str(_svg_path)))
-    # L'app si chiude quando l'ultima finestra viene chiusa
-    # (override utente: X = chiusura completa)
+            app.setWindowIcon(QIcon(str(svg_path)))
+    elif svg_path.exists():
+        app.setWindowIcon(QIcon(str(svg_path)))
+
     app.setQuitOnLastWindowClosed(True)
     app.setStyleSheet(build_stylesheet())
 
-    # Impostazioni
     settings = Settings(
         on_change=lambda key, val: event_bus.emit(
             "config_changed", key=key, value=val,
@@ -138,23 +127,14 @@ def main() -> None:
     )
     settings.load()
 
-    # Controller
     controller = AppController(settings)
 
-    # Finestra principale (creata PRIMA dell'overlay per lo z-order)
     main_window = MainWindow(controller)
-
-    # Overlay di disegno (sopra le altre app, ma sotto la GUI)
     overlay = OverlayWindow(controller)
     overlay.show()
-
-    # Collega l'overlay alla MainWindow per il fallback click
     main_window.set_overlay(overlay)
-
-    # System tray
     tray = TrayIcon(controller, main_window)
 
-    # Mostra la finestra e sollevala sopra l'overlay
     def _ensure_z_order() -> None:
         overlay.lower()
         if main_window.isVisible():
@@ -169,7 +149,6 @@ def main() -> None:
     logger.info("Applicazione avviata con successo")
     exit_code = app.exec()
 
-    # Salvataggio impostazioni all'uscita
     settings.save()
     logger.info("Applicazione terminata (codice %d)", exit_code)
     sys.exit(exit_code)

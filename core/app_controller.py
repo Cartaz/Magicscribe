@@ -22,14 +22,8 @@ logger = logging.getLogger(__name__)
 class AppController:
     """Controller principale dell'applicazione.
 
-    Espone metodi tipizzati per il livello UI e gestisce
-    lo stato globale dell'applicazione.
-
-    Attributes:
-        _settings: gestore impostazioni.
-        _stroke_manager: gestore cronologia tratti.
-        _tool_manager: gestore strumenti.
-        _state: stato globale dell'app.
+    Espone metodi tipizzati per il livello UI e coordina i proprietari
+    canonici dello stato applicativo.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -111,14 +105,7 @@ class AppController:
     # ── Creazione tratti ──────────────────────────────────────────────────
 
     def create_stroke(self, tool_type: ToolType) -> Stroke:
-        """Crea un nuovo tratto con la configurazione corrente dello strumento.
-
-        Args:
-            tool_type: tipo di strumento da usare.
-
-        Returns:
-            Un nuovo Stroke vuoto configurato.
-        """
+        """Crea un nuovo tratto con la configurazione corrente dello strumento."""
         config = self._tool_manager.config_for(tool_type)
         return Stroke(
             tool_type=config.tool_type,
@@ -130,11 +117,7 @@ class AppController:
         )
 
     def finalize_stroke(self, stroke: Stroke) -> None:
-        """Aggiunge un tratto completato alla cronologia.
-
-        Args:
-            stroke: tratto completato.
-        """
+        """Aggiunge un tratto completato alla cronologia."""
         if stroke.points:
             self._stroke_manager.add_stroke(stroke)
 
@@ -143,11 +126,9 @@ class AppController:
     def set_tool(self, tool_type: ToolType) -> None:
         """Seleziona uno strumento di disegno.
 
-        Args:
-            tool_type: tipo di strumento.
+        ToolManager e' l'unico proprietario canonico dello strumento corrente.
         """
         self._tool_manager.set_tool(tool_type)
-        self._state.current_tool = tool_type
 
     def get_current_tool(self) -> ToolType:
         """Restituisce lo strumento corrente."""
