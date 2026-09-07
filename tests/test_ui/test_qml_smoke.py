@@ -24,7 +24,8 @@ from ui.overlay_window import OverlayWindow
 _APP = QApplication.instance() or QApplication([])
 
 
-def test_control_panel_qml_loads_offscreen(tmp_path) -> None:
+def test_control_panel_qml_loads_and_transitions_offscreen(tmp_path) -> None:
+    """Carica la shell QML e verifica pannello -> floating -> restore."""
     event_bus.clear()
     settings = Settings(path=tmp_path / "qml_settings.json")
     controller = AppController(settings)
@@ -56,10 +57,30 @@ def test_control_panel_qml_loads_offscreen(tmp_path) -> None:
         roots = engine.rootObjects()
         assert failures == []
         assert len(roots) == 1
-        assert roots[0].objectName() == "controlPanel"
-        assert roots[0].isVisible() is False
-        coordinator.set_control_window(roots[0])
+
+        control_window = roots[0]
+        assert control_window.objectName() == "controlPanel"
+        assert control_window.isVisible() is False
+
+        coordinator.set_control_window(control_window)
+        coordinator.show_control_panel()
+        _APP.processEvents()
+        assert control_window.isVisible() is True
+        assert coordinator.is_minimized_to_floating() is False
+
+        coordinator.minimize_to_floating()
+        _APP.processEvents()
+        assert control_window.isVisible() is False
+        assert coordinator.is_minimized_to_floating() is True
+
+        coordinator.restore_control_panel()
+        _APP.processEvents()
+        assert control_window.isVisible() is True
+        assert coordinator.is_minimized_to_floating() is False
     finally:
+        roots = engine.rootObjects()
+        if roots:
+            roots[0].hide()
         coordinator.shutdown()
         overlay.deleteLater()
         engine.deleteLater()
