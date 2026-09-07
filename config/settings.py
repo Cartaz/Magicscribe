@@ -49,19 +49,48 @@ _HOTKEY_KEYS = {
     "hotkey_redo",
 }
 _ALLOWED_TOOLS = {"pen", "eraser", "line", "rect", "circle", "smooth"}
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+
+def _normalize_color(value: Any) -> tuple[bool, Any]:
+    """Valida i formati colore gia' supportati dal DrawingEngine.
+
+    Supporta #RRGGBB, #AARRGGBB e rgba(r,g,b,a), con canali RGB 0..255
+    e alpha 0..1. Non dipende da Qt, quindi resta testabile in isolamento.
+    """
+    if not isinstance(value, str):
+        return False, value
+
+    candidate = value.strip()
+    if (
+        candidate.startswith("#")
+        and len(candidate) in (7, 9)
+        and all(ch in _HEX_DIGITS for ch in candidate[1:])
+    ):
+        return True, candidate.lower()
+
+    if candidate.startswith("rgba(") and candidate.endswith(")"):
+        parts = [part.strip() for part in candidate[5:-1].split(",")]
+        if len(parts) != 4:
+            return False, value
+        try:
+            red, green, blue = (int(parts[index]) for index in range(3))
+            alpha = float(parts[3])
+        except (TypeError, ValueError):
+            return False, value
+        if not all(0 <= channel <= 255 for channel in (red, green, blue)):
+            return False, value
+        if not 0.0 <= alpha <= 1.0:
+            return False, value
+        return True, f"rgba({red},{green},{blue},{alpha:g})"
+
+    return False, value
 
 
 def _normalize_value(key: str, value: Any) -> tuple[bool, Any]:
     """Valida e normalizza un valore di configurazione senza dipendere da Qt."""
     if key in _COLOR_KEYS:
-        if (
-            isinstance(value, str)
-            and len(value) == 7
-            and value.startswith("#")
-            and all(ch in "0123456789abcdefABCDEF" for ch in value[1:])
-        ):
-            return True, value.lower()
-        return False, value
+        return _normalize_color(value)
 
     if key in _SIZE_KEYS:
         if (
