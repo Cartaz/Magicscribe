@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -6,9 +8,12 @@ ApplicationWindow {
     id: root
     objectName: "controlPanel"
 
-    required property QtObject drawingAdapter
-    required property QtObject toolAdapter
-    required property QtObject shellAdapter
+    // Runtime-injected QObject adapters. `var` is intentional here: the
+    // concrete Python QObject meta-types are not registered as creatable QML
+    // types, while `required` still makes the dependency explicit and mandatory.
+    required property var drawingAdapter
+    required property var toolAdapter
+    required property var shellAdapter
     required property var toolModel
 
     readonly property var colorPresets: [
