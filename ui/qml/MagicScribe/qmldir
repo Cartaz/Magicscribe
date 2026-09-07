@@ -5,4 +5,5 @@ InsetSurface 1.0 InsetSurface.qml
 NeuButton 1.0 NeuButton.qml
 ShortcutBadge 1.0 ShortcutBadge.qml
 StatusIndicator 1.0 StatusIndicator.qml
+FloatingPalette 1.0 FloatingPalette.qml
 ControlPanel 1.0 ControlPanel.qml

@@ -36,6 +36,21 @@ def test_no_pyqt6_references_remain_in_runtime_sources() -> None:
     assert offenders == []
 
 
+def test_runtime_shell_does_not_use_legacy_floating_widget() -> None:
+    """M4 mantiene il widget legacy solo per test/parita', non nel runtime."""
+    root = Path(__file__).resolve().parents[2]
+    runtime_files = [
+        root / "main.py",
+        root / "ui" / "native" / "window_coordinator.py",
+    ]
+    offenders = [
+        path.relative_to(root).as_posix()
+        for path in runtime_files
+        if "FloatingIcon" in path.read_text(encoding="utf-8")
+    ]
+    assert offenders == []
+
+
 def test_widget_modules_import_with_pyside6() -> None:
     import ui.drawing_engine  # noqa: F401
     import ui.event_bridge  # noqa: F401
@@ -45,7 +60,7 @@ def test_widget_modules_import_with_pyside6() -> None:
 
 
 def test_legacy_windows_construct_and_sync_under_pyside6(tmp_path) -> None:
-    """M1 deve mantenere costruibili i widget mentre prepara il passaggio QML."""
+    """Il fallback legacy resta costruibile finche' M5+ non dimostra parita'."""
     event_bus.clear()
     settings = Settings(path=tmp_path / "ui_settings.json")
     settings.set("last_tool", "circle")

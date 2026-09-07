@@ -8,27 +8,31 @@ from PySide6.QtCore import QPoint
 from PySide6.QtGui import QWindow
 from PySide6.QtWidgets import QApplication
 
-from ui.widgets.floating_icon import FloatingIcon
-
 logger = logging.getLogger(__name__)
 
 
 class WindowCoordinator:
-    """Possiede la policy di visibilita' e z-order della shell Qt.
+    """Possiede la policy di visibilita', posizione e z-order della shell Qt.
 
-    Il pannello QML non decide come coordinarsi con l'overlay QWidget o con
-    l'icona volante legacy: queste responsabilita' restano nel livello native.
+    QML descrive le finestre e le gesture; la policy tra pannello, floating
+    palette e overlay resta qui, senza duplicare stato operativo in QML.
     """
+
+    _FLOATING_MARGIN = 20
 
     def __init__(self, overlay) -> None:
         self._overlay = overlay
         self._control_window: QWindow | None = None
+        self._floating_window: QWindow | None = None
         self._last_control_pos: QPoint | None = None
-        self._floating_icon = FloatingIcon(on_clicked=self.restore_control_panel)
-        self._overlay.set_floating_icon(self._floating_icon)
+        self._last_floating_pos: QPoint | None = None
 
     def set_control_window(self, window: QWindow) -> None:
         self._control_window = window
+
+    def set_floating_window(self, window: QWindow) -> None:
+        self._floating_window = window
+        self._overlay.set_floating_window(window)
 
     def show_control_panel(self) -> None:
         window = self._control_window
@@ -36,7 +40,11 @@ class WindowCoordinator:
             logger.warning("Pannello QML non ancora disponibile")
             return
 
-        self._floating_icon.hide()
+        floating = self._floating_window
+        if floating is not None and floating.isVisible():
+            self._last_floating_pos = floating.position()
+            floating.hide()
+
         if self._last_control_pos is not None:
             window.setPosition(self._last_control_pos)
         window.show()
@@ -44,34 +52,59 @@ class WindowCoordinator:
         window.requestActivate()
 
     def minimize_to_floating(self) -> None:
-        window = self._control_window
-        if window is None:
+        control = self._control_window
+        floating = self._floating_window
+        if control is None or floating is None:
+            logger.warning("Shell QML incompleta: impossibile ridurre a floating palette")
             return
 
-        self._last_control_pos = window.position()
-        window.hide()
-        self._floating_icon.show_at()
-        self._floating_icon.raise_()
-        logger.info("Pannello QML ridotto a icona volante")
+        self._last_control_pos = control.position()
+        control.hide()
+
+        target_pos = self._last_floating_pos
+        if target_pos is None:
+            target_pos = self._default_floating_position(floating)
+        floating.setPosition(target_pos)
+        floating.show()
+        floating.raise_()
+        logger.info("Pannello QML ridotto a floating palette")
 
     def restore_control_panel(self) -> None:
         self.show_control_panel()
         logger.info("Pannello QML ripristinato")
 
     def is_minimized_to_floating(self) -> bool:
-        return self._floating_icon.isVisible()
+        floating = self._floating_window
+        return floating is not None and floating.isVisible()
 
     def ensure_z_order(self) -> None:
         self._overlay.lower()
-        if self._control_window is not None and self._control_window.isVisible():
-            self._control_window.raise_()
-            self._control_window.requestActivate()
-        if self._floating_icon.isVisible():
-            self._floating_icon.raise_()
+
+        control = self._control_window
+        if control is not None and control.isVisible():
+            control.raise_()
+            control.requestActivate()
+
+        floating = self._floating_window
+        if floating is not None and floating.isVisible():
+            floating.raise_()
 
     def shutdown(self) -> None:
-        self._floating_icon.hide()
+        floating = self._floating_window
+        if floating is not None:
+            floating.hide()
 
     def quit_application(self) -> None:
         self.shutdown()
         QApplication.quit()
+
+    def _default_floating_position(self, window: QWindow) -> QPoint:
+        screen = window.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return QPoint(100, 100)
+
+        geometry = screen.availableGeometry()
+        return QPoint(
+            geometry.right() - window.width() - self._FLOATING_MARGIN,
+            geometry.bottom() - window.height() - self._FLOATING_MARGIN,
+        )

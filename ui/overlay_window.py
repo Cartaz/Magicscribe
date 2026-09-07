@@ -1,9 +1,8 @@
 """Finestra overlay trasparente per il disegno su schermo.
 
 Questa finestra copre il desktop virtuale e cattura il mouse solo quando il
-disegno e' attivo. In M1 mantiene intenzionalmente il comportamento QWidget,
-QPainter e X11/XShape esistente; verra' migrata a Qt Quick in una milestone
-successiva dopo verifica di parita'.
+disegno e' attivo. In M4 mantiene intenzionalmente il comportamento QWidget,
+QPainter e X11/XShape esistente; pannello e floating palette sono invece QML.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from typing import Optional
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import (
     QPainter, QCursor, QPixmap, QPen, QColor, QBrush,
-    QKeySequence, QShortcut, QMouseEvent, QPaintEvent,
+    QKeySequence, QShortcut, QMouseEvent, QPaintEvent, QWindow,
 )
 from PySide6.QtWidgets import QWidget, QApplication
 
@@ -121,7 +120,7 @@ class OverlayWindow(QWidget):
         self._controller = controller
         self._current_stroke: Stroke | None = None
         self._eraser_cursor = _create_eraser_cursor()
-        self._floating_icon: QWidget | None = None
+        self._floating_surface: QWidget | QWindow | None = None
         self._shortcuts: list[QShortcut] = []
 
         self._setup_window()
@@ -129,16 +128,22 @@ class OverlayWindow(QWidget):
         self._register_shortcuts()
 
     def set_floating_icon(self, icon: QWidget) -> None:
-        self._floating_icon = icon
+        """Compatibilita' temporanea con la MainWindow QWidget legacy."""
+        self._floating_surface = icon
 
-    def _is_in_floating_icon(self, pos) -> bool:
-        if self._floating_icon is None or not self._floating_icon.isVisible():
+    def set_floating_window(self, window: QWindow) -> None:
+        """Registra la floating palette QML usata dal runtime M4."""
+        self._floating_surface = window
+
+    def _is_in_floating_surface(self, pos) -> bool:
+        surface = self._floating_surface
+        if surface is None or not surface.isVisible():
             return False
         try:
             global_pos = pos.toPoint() if hasattr(pos, "toPoint") else pos
-            return self._floating_icon.geometry().contains(global_pos)
+            return surface.geometry().contains(global_pos)
         except (AttributeError, TypeError) as exc:
-            logger.debug("Errore verifica icona volante: %s", exc)
+            logger.debug("Errore verifica floating surface: %s", exc)
             return False
 
     def _setup_window(self) -> None:
@@ -268,7 +273,7 @@ class OverlayWindow(QWidget):
             return
         if event.button() != Qt.MouseButton.LeftButton:
             return
-        if self._is_in_floating_icon(event.globalPosition()):
+        if self._is_in_floating_surface(event.globalPosition()):
             return
 
         tool = self._controller.get_current_tool()
