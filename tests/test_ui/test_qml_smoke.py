@@ -7,7 +7,8 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtGui import QWindow
+from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
 
@@ -24,8 +25,8 @@ from ui.overlay_window import OverlayWindow
 _APP = QApplication.instance() or QApplication([])
 
 
-def test_control_panel_qml_loads_and_transitions_offscreen(tmp_path) -> None:
-    """Carica la shell QML e verifica pannello -> floating -> restore."""
+def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
+    """Carica entrambe le finestre QML e verifica panel -> floating -> restore."""
     event_bus.clear()
     settings = Settings(path=tmp_path / "qml_settings.json")
     controller = AppController(settings)
@@ -53,36 +54,62 @@ def test_control_panel_qml_loads_and_transitions_offscreen(tmp_path) -> None:
     engine.loadFromModule("MagicScribe", "ControlPanel")
     _APP.processEvents()
 
+    floating_component = QQmlComponent(engine)
+    floating_component.loadFromModule("MagicScribe", "FloatingPalette")
+    assert floating_component.isReady(), floating_component.errorString()
+
+    floating_object = floating_component.createWithInitialProperties({
+        "drawingAdapter": drawing_adapter,
+        "shellAdapter": shell_adapter,
+    })
+    _APP.processEvents()
+
     try:
         roots = engine.rootObjects()
         assert failures == []
         assert len(roots) == 1
 
         control_window = roots[0]
+        assert isinstance(control_window, QWindow)
         assert control_window.objectName() == "controlPanel"
         assert control_window.isVisible() is False
 
+        assert isinstance(floating_object, QWindow)
+        floating_window = floating_object
+        assert floating_window.objectName() == "floatingPalette"
+        assert floating_window.isVisible() is False
+
         coordinator.set_control_window(control_window)
+        coordinator.set_floating_window(floating_window)
+        assert overlay._floating_surface is floating_window
+
         coordinator.show_control_panel()
         _APP.processEvents()
         assert control_window.isVisible() is True
+        assert floating_window.isVisible() is False
         assert coordinator.is_minimized_to_floating() is False
 
         coordinator.minimize_to_floating()
         _APP.processEvents()
         assert control_window.isVisible() is False
+        assert floating_window.isVisible() is True
         assert coordinator.is_minimized_to_floating() is True
 
-        coordinator.restore_control_panel()
+        shell_adapter.restore_control_panel()
         _APP.processEvents()
         assert control_window.isVisible() is True
+        assert floating_window.isVisible() is False
         assert coordinator.is_minimized_to_floating() is False
     finally:
         roots = engine.rootObjects()
         if roots:
             roots[0].hide()
+        if isinstance(floating_object, QWindow):
+            floating_object.hide()
+            floating_object.deleteLater()
         coordinator.shutdown()
         overlay.deleteLater()
+        floating_component.deleteLater()
         engine.deleteLater()
         event_bus.clear()
         _APP.processEvents()
