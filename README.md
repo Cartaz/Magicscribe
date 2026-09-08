@@ -10,6 +10,8 @@ Python owns canonical state, persistence, drawing history, desktop integration a
 
 The QML boundary is intentionally small: `DrawingAdapter`, `ToolAdapter`, `ShellAdapter` and `ToolListModel`.
 
+Global drawing shortcuts use the XDG Desktop Portal. The portal transport is isolated in `ui/native/global_shortcuts.py` and uses Jeepney in a dedicated Python worker thread. This avoids implicit QtDBus conversion of the portal's compound `a(sa{sv})` payload while keeping blocking D-Bus I/O off the GUI thread; the rest of the application only sees the focused `GlobalShortcutService` API.
+
 ## Development checks
 
 ```bash
