@@ -12,10 +12,13 @@ MAGICSCRIBE_STATE_DIR="${STATE_HOME}/magicscribe"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 REPORT_DIR="${MAGICSCRIBE_STATE_DIR}/desktop-gate-${STAMP}"
 REPORT_FILE="${REPORT_DIR}/report.txt"
-APP_STDERR="${REPORT_DIR}/app-console.log"
 APP_LOG="${MAGICSCRIBE_STATE_DIR}/magicscribe.log"
 PYTHON="${ROOT_DIR}/.venv/bin/python"
 APP_PID=""
+RUN_INDEX=0
+RUN_LOG_OFFSET=0
+CURRENT_RUN_LOG=""
+CURRENT_CONSOLE_LOG=""
 
 mkdir -p "${REPORT_DIR}"
 : > "${REPORT_FILE}"
@@ -47,10 +50,10 @@ ask() {
     local answer
     while true; do
         printf '\n[%s] %s\n' "${id}" "${prompt}"
-        printf 'Risultato [y=PASS / n=FAIL / s=SKIP]: '
+        printf 'Risultato [y=PASS / n=FAIL / k=SKIP]: '
         IFS= read -r answer
         case "${answer,,}" in
-            y|yes|si|sì)
+            y|yes|s|si|sì)
                 log "${id}: PASS"
                 return 0
                 ;;
@@ -58,7 +61,7 @@ ask() {
                 log "${id}: FAIL"
                 return 1
                 ;;
-            s|skip)
+            k|skip)
                 log "${id}: SKIP"
                 return 0
                 ;;
@@ -79,46 +82,91 @@ capture_pss() {
     grep -E '^(Pss|Pss_Anon):' "/proc/${APP_PID}/smaps_rollup" | tee -a "${REPORT_FILE}" || true
 }
 
-start_app() {
-    local log_offset
-    log_offset=0
+snapshot_run_log() {
     if [[ -f "${APP_LOG}" ]]; then
-        log_offset="$(wc -c < "${APP_LOG}")"
+        tail -c "+$((RUN_LOG_OFFSET + 1))" "${APP_LOG}" 2>/dev/null > "${CURRENT_RUN_LOG}" || true
+    else
+        : > "${CURRENT_RUN_LOG}"
+    fi
+}
+
+start_app() {
+    local mode="${1:-normal}"
+    RUN_INDEX=$((RUN_INDEX + 1))
+    CURRENT_RUN_LOG="${REPORT_DIR}/app-run-${RUN_INDEX}.log"
+    CURRENT_CONSOLE_LOG="${REPORT_DIR}/app-console-run-${RUN_INDEX}.log"
+    RUN_LOG_OFFSET=0
+    if [[ -f "${APP_LOG}" ]]; then
+        RUN_LOG_OFFSET="$(wc -c < "${APP_LOG}")"
     fi
 
-    : > "${APP_STDERR}"
-    "${PYTHON}" "${ROOT_DIR}/main.py" >"${APP_STDERR}" 2>&1 &
+    : > "${CURRENT_CONSOLE_LOG}"
+    if [[ "${mode}" == "noportal" ]]; then
+        DBUS_SESSION_BUS_ADDRESS="unix:path=${REPORT_DIR}/missing-session-bus" \
+            "${PYTHON}" "${ROOT_DIR}/main.py" >"${CURRENT_CONSOLE_LOG}" 2>&1 &
+    else
+        "${PYTHON}" "${ROOT_DIR}/main.py" >"${CURRENT_CONSOLE_LOG}" 2>&1 &
+    fi
     APP_PID=$!
-    log "MagicScribe avviato: pid=${APP_PID}"
+    log "MagicScribe avviato: pid=${APP_PID}, mode=${mode}, run=${RUN_INDEX}"
 
-    for _ in {1..50}; do
+    for _ in {1..70}; do
         if ! kill -0 "${APP_PID}" 2>/dev/null; then
             log "ERRORE: MagicScribe è terminato durante l'avvio."
-            cat "${APP_STDERR}" | tee -a "${REPORT_FILE}"
+            cat "${CURRENT_CONSOLE_LOG}" | tee -a "${REPORT_FILE}"
             return 1
         fi
-        if [[ -f "${APP_LOG}" ]] && tail -c "+$((log_offset + 1))" "${APP_LOG}" 2>/dev/null | grep -q "Applicazione avviata con shell e overlay Qt Quick"; then
-            break
+        snapshot_run_log
+        if grep -q "Applicazione avviata con shell e overlay Qt Quick" "${CURRENT_RUN_LOG}" 2>/dev/null; then
+            return 0
         fi
         sleep 0.1
     done
 
-    sleep 0.4
-    if [[ -f "${APP_LOG}" ]]; then
-        log "Estratto log dell'avvio corrente:"
-        tail -c "+$((log_offset + 1))" "${APP_LOG}" 2>/dev/null | tail -n 80 | tee -a "${REPORT_FILE}"
-    fi
+    snapshot_run_log
+    log "ERRORE: timeout attendendo il completamento dell'avvio."
+    tail -n 80 "${CURRENT_RUN_LOG}" | tee -a "${REPORT_FILE}" || true
+    tail -n 80 "${CURRENT_CONSOLE_LOG}" | tee -a "${REPORT_FILE}" || true
+    return 1
 }
 
-stop_app() {
+stop_app_forcefully() {
     if [[ -n "${APP_PID}" ]] && kill -0 "${APP_PID}" 2>/dev/null; then
         kill "${APP_PID}" 2>/dev/null || true
         for _ in {1..50}; do
             kill -0 "${APP_PID}" 2>/dev/null || break
             sleep 0.1
         done
+        kill -KILL "${APP_PID}" 2>/dev/null || true
     fi
     APP_PID=""
+}
+
+graceful_quit_check() {
+    local id="$1"
+    printf '\nPorta il focus sul pannello MagicScribe e premi Ctrl+Shift+Q.\n'
+    printf 'Dopo averlo premuto, torna qui e premi Invio...'
+    IFS= read -r _
+
+    for _ in {1..50}; do
+        if ! kill -0 "${APP_PID}" 2>/dev/null; then
+            log "${id}: PASS"
+            APP_PID=""
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    log "${id}: FAIL"
+    log "L'app non è terminata entro 5 secondi; la chiudo per continuare il gate."
+    stop_app_forcefully
+    return 1
+}
+
+show_current_run_log() {
+    snapshot_run_log
+    log "Estratto log run ${RUN_INDEX}:"
+    tail -n 100 "${CURRENT_RUN_LOG}" | tee -a "${REPORT_FILE}" || true
 }
 
 section "Repository"
@@ -165,7 +213,7 @@ fi
 section "Runtime prerequisite"
 if [[ ! -x "${PYTHON}" ]]; then
     log "Ambiente virtuale assente: eseguo install.sh"
-    "${ROOT_DIR}/install.sh" | tee -a "${REPORT_FILE}"
+    bash "${ROOT_DIR}/install.sh" | tee -a "${REPORT_FILE}"
 fi
 "${PYTHON}" - <<'PY' | tee -a "${REPORT_FILE}"
 from PySide6.QtCore import qVersion
@@ -173,14 +221,24 @@ from PySide6 import __version__ as pyside_version
 print(f"Python/PySide6/Qt runtime: PySide6 {pyside_version}, Qt {qVersion()}")
 PY
 
-section "Start application / portal"
-log "Se KDE mostra la finestra del GlobalShortcuts portal, ACCETTA le cinque scorciatoie per questa prima fase."
-start_app
+section "Run 1 — production portal path"
+log "Se KDE mostra la finestra GlobalShortcuts, ACCETTA le cinque scorciatoie."
+start_app normal
+printf '\nGestisci ora l\047eventuale dialog GlobalShortcuts; poi premi Invio...'
+IFS= read -r _
+sleep 0.5
+show_current_run_log
 
-if grep -q "Global shortcuts registrate tramite XDG Desktop Portal" "${APP_LOG}" 2>/dev/null; then
-    log "Portal registration: PASS (messaggio di successo presente nel log)"
+if grep -q "Piattaforma Qt: xcb" "${CURRENT_RUN_LOG}"; then
+    log "ENV_QPA: PASS"
 else
-    log "Portal registration: NON CONFERMATA. Controlla l'estratto log sopra."
+    log "ENV_QPA: FAIL — il gate target richiede il runtime Qt xcb/XWayland"
+fi
+
+if grep -q "Global shortcuts registrate tramite XDG Desktop Portal" "${CURRENT_RUN_LOG}"; then
+    log "PORTAL_GLOBAL: PASS"
+else
+    log "PORTAL_GLOBAL: FAIL"
 fi
 
 capture_pss "idle"
@@ -188,10 +246,14 @@ capture_pss "idle"
 section "Global shortcuts — app non focalizzata"
 log "Porta il focus su un'altra applicazione prima di ogni prova."
 ask "GS1" "F9 attiva/disattiva il disegno mentre MagicScribe NON è focalizzato?" || true
+printf '\nCrea almeno un tratto visibile prima delle prove visibility/clear. Premi Invio quando pronto...'
+IFS= read -r _
 ask "GS2" "Ctrl+Shift+F9 mostra/nasconde le annotazioni mentre MagicScribe NON è focalizzato?" || true
 ask "GS3" "Shift+F9 cancella le annotazioni mentre MagicScribe NON è focalizzato?" || true
-ask "GS4" "F8 esegue undo mentre MagicScribe NON è focalizzato?" || true
-ask "GS5" "Shift+F8 esegue redo mentre MagicScribe NON è focalizzato?" || true
+printf '\nCrea un nuovo tratto, poi riporta il focus fuori da MagicScribe. Premi Invio quando pronto...'
+IFS= read -r _
+ask "GS4" "F8 esegue undo del nuovo tratto mentre MagicScribe NON è focalizzato?" || true
+ask "GS5" "Shift+F8 esegue redo dello stesso tratto mentre MagicScribe NON è focalizzato?" || true
 
 section "No double activation"
 log "Riporta il focus sul pannello di controllo."
@@ -217,51 +279,90 @@ fi
 ask "MM1" "Se usi più monitor, l'overlay copre correttamente l'intero desktop virtuale (anche coordinate negative)? Altrimenti SKIP." || true
 
 section "PSS after controlled drawing load"
-printf '\nDisegna ora ESATTAMENTE 20 tratti complessivi aggiuntivi, distribuendoli tra gli strumenti.\n'
+printf '\nDisegna ora ESATTAMENTE 20 tratti aggiuntivi, distribuendoli tra gli strumenti.\n'
 printf 'Quando hai finito premi Invio per acquisire il secondo snapshot PSS...'
 IFS= read -r _
 capture_pss "after_20_additional_strokes"
 
 section "Accessibility/focus observation"
-ask "A11Y1" "La floating palette non ruba il focus all'app annotata e resta comunque utilizzabile correttamente col mouse?" || true
+ask "A11Y1" "La floating palette non ruba il focus all'app annotata e resta utilizzabile correttamente col mouse?" || true
 ask "A11Y2" "Tab/focus visibile nel pannello di controllo è coerente e non ci sono controlli irraggiungibili?" || true
 
-section "Portal rejection/fallback pass"
-log "Chiudo la prima istanza. La seconda serve a verificare il fallback locale."
-stop_app
-log "Riapriamo MagicScribe. Se KDE ripropone la richiesta GlobalShortcuts, questa volta ANNULLALA/RIFIUTALA."
-start_app
-sleep 0.5
+section "Lifecycle"
+graceful_quit_check "LC1" || true
 
-if grep -q "Global shortcuts non attive:" "${APP_LOG}" 2>/dev/null; then
-    log "Fallback registration path: osservato nel log"
+section "Run 2 — portal rejection / local fallback"
+log "Riapro MagicScribe. Se KDE ripropone il dialog GlobalShortcuts, questa volta ANNULLA/RIFIUTA."
+start_app normal
+printf '\nGestisci ora l\047eventuale dialog; poi premi Invio...'
+IFS= read -r _
+sleep 0.5
+show_current_run_log
+
+fallback_observed=false
+if grep -q "Global shortcuts non attive:" "${CURRENT_RUN_LOG}"; then
+    log "PORTAL_REJECTION: PASS — percorso fallback osservato nel log del secondo avvio"
+    fallback_observed=true
+elif grep -q "Global shortcuts registrate tramite XDG Desktop Portal" "${CURRENT_RUN_LOG}"; then
+    log "PORTAL_REJECTION: SKIP — KDE ha registrato/riusato la sessione invece di esercitare il rifiuto"
 else
-    log "Fallback registration path: non osservato automaticamente (il portal può aver riusato una decisione precedente)"
+    log "PORTAL_REJECTION: FAIL — nessun esito portal conclusivo nel log del secondo avvio"
 fi
 
-log "Con il pannello MagicScribe focalizzato, prova le cinque scorciatoie locali."
-ask "FB1" "F9 funziona localmente con il pannello focalizzato?" || true
-ask "FB2" "Ctrl+Shift+F9 funziona localmente con il pannello focalizzato?" || true
-ask "FB3" "Shift+F9 funziona localmente con il pannello focalizzato?" || true
-ask "FB4" "F8 funziona localmente con il pannello focalizzato?" || true
-ask "FB5" "Shift+F8 funziona localmente con il pannello focalizzato?" || true
+if [[ "${fallback_observed}" == true ]]; then
+    log "Con il pannello focalizzato, verifica le cinque WindowShortcut locali."
+    ask "FB1" "F9 funziona localmente con il pannello focalizzato?" || true
+    ask "FB2" "Ctrl+Shift+F9 funziona localmente con il pannello focalizzato?" || true
+    ask "FB3" "Shift+F9 funziona localmente con il pannello focalizzato?" || true
+    ask "FB4" "F8 funziona localmente con il pannello focalizzato?" || true
+    ask "FB5" "Shift+F8 funziona localmente con il pannello focalizzato?" || true
+    graceful_quit_check "LC2" || true
+else
+    log "FB1: SKIP"
+    log "FB2: SKIP"
+    log "FB3: SKIP"
+    log "FB4: SKIP"
+    log "FB5: SKIP"
+    stop_app_forcefully
+fi
+
+section "Forced portal-unavailable fallback"
+log "Eseguo una terza istanza con session bus volutamente irraggiungibile: serve solo a provare il fallback locale su KWin, non sostituisce il test di rifiuto reale del dialog KDE."
+start_app noportal
+sleep 0.5
+show_current_run_log
+if grep -q "Global shortcuts non attive:" "${CURRENT_RUN_LOG}"; then
+    log "FORCED_FALLBACK_PATH: PASS"
+    log "Porta il focus sul pannello e prova le cinque scorciatoie."
+    ask "FF1" "F9 funziona nel fallback locale forzato?" || true
+    ask "FF2" "Ctrl+Shift+F9 funziona nel fallback locale forzato?" || true
+    ask "FF3" "Shift+F9 funziona nel fallback locale forzato?" || true
+    ask "FF4" "F8 funziona nel fallback locale forzato?" || true
+    ask "FF5" "Shift+F8 funziona nel fallback locale forzato?" || true
+else
+    log "FORCED_FALLBACK_PATH: FAIL"
+fi
+graceful_quit_check "LC3" || true
 
 section "Final evidence"
 if [[ -f "${APP_LOG}" ]]; then
-    cp -f "${APP_LOG}" "${REPORT_DIR}/magicscribe.log"
-    log "Log applicazione copiato in ${REPORT_DIR}/magicscribe.log"
+    cp -f "${APP_LOG}" "${REPORT_DIR}/magicscribe-full.log"
+    log "Log applicazione completo copiato in ${REPORT_DIR}/magicscribe-full.log"
 fi
-cp -f "${APP_STDERR}" "${REPORT_DIR}/app-console-last-run.log" 2>/dev/null || true
 
-pass_count="$(grep -c ': PASS$' "${REPORT_FILE}" || true)"
-fail_count="$(grep -c ': FAIL$' "${REPORT_FILE}" || true)"
-skip_count="$(grep -c ': SKIP$' "${REPORT_FILE}" || true)"
-log "Risultati interattivi: PASS=${pass_count} FAIL=${fail_count} SKIP=${skip_count}"
+pass_count="$(grep -c ': PASS' "${REPORT_FILE}" || true)"
+fail_count="$(grep -c ': FAIL' "${REPORT_FILE}" || true)"
+skip_count="$(grep -c ': SKIP' "${REPORT_FILE}" || true)"
+log "Risultati: PASS=${pass_count} FAIL=${fail_count} SKIP=${skip_count}"
 log "Report completo: ${REPORT_FILE}"
 
 if [[ "${fail_count}" -gt 0 ]]; then
     log "GATE: FAIL — non rimuovere il fallback legacy."
     exit 2
 fi
+if [[ "${skip_count}" -gt 0 ]]; then
+    log "GATE: INCOMPLETO — nessun FAIL, ma restano verifiche SKIP. Non chiudere issue #6."
+    exit 3
+fi
 
-log "GATE interattivo senza FAIL espliciti. Controllare comunque eventuali SKIP e il requisito portal rejection prima di chiudere issue #6."
+log "GATE: PASS — nessun FAIL/SKIP nel report interattivo. Il report va comunque revisionato prima di chiudere issue #6."
