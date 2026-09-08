@@ -260,6 +260,14 @@ log "Riporta il focus sul pannello di controllo."
 ask "GS6" "Con il pannello focalizzato, F9 produce una sola commutazione e non un doppio trigger?" || true
 ask "GS7" "Con il pannello focalizzato, undo/redo/visibility/clear producono ciascuno una sola azione?" || true
 
+section "Compact vertical toolbar"
+ask "TB1" "La toolbar è frameless, compatta, verticale e parte sul lato sinistro senza uscire dall'area disponibile dello schermo?" || true
+ask "TB2" "Un click sull'icona MagicScribe in alto riduce la toolbar lasciando visibile soltanto la piccola floating palette?" || true
+ask "TB3" "Un click sulla floating palette ripristina la toolbar nella posizione precedente?" || true
+ask "TB4" "Trascinando dall'icona MagicScribe in alto la toolbar si sposta correttamente senza minimizzarsi involontariamente al rilascio?" || true
+ask "TB5" "Cambiando strumento resta selezionato un solo pulsante, con icona arancione + stato inset/glow coerente?" || true
+ask "TB6" "Slider dello spessore e swatch colore sono interamente visibili, raggiungibili e aggiornano il tratto selezionato senza clipping?" || true
+
 section "Qt Quick overlay / floating palette"
 ask "OV1" "Overlay visivamente trasparente salvo le annotazioni?" || true
 ask "OV2" "Con disegno disattivato, click e interazioni passano al desktop/app sottostante?" || true
