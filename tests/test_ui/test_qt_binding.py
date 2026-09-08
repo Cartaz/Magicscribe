@@ -93,14 +93,15 @@ def test_pure_geometry_lives_in_core_and_dead_event_bridge_is_removed() -> None:
     assert "from core.geometry import rdp_simplify" in drawing_engine
 
 
-def test_neu_button_selected_and_pressed_use_inset_state() -> None:
+def test_neu_button_pressed_state_does_not_toggle_effect_layers() -> None:
     root = Path(__file__).resolve().parents[2]
     source = (
         root / "ui" / "qml" / "MagicScribe" / "NeuButton.qml"
     ).read_text(encoding="utf-8")
-    assert "readonly property bool insetState: selected || pressed" in source
-    assert "InsetSurface {" in source
-    assert "opacity: control.insetState ? 0.0" in source
+    assert "readonly property bool insetState" not in source
+    assert "visible: control.selected" in source
+    assert "opacity: control.pressed ? 0.72 : 1.0" in source
+    assert "border.width: control.pressed || control.activeFocus ? 1 : 0" in source
 
 
 def test_widget_modules_import_with_pyside6() -> None:
