@@ -15,8 +15,11 @@ from ui.native.global_shortcuts import (
     GlobalShortcutService,
     PortalGlobalShortcutBackend,
     ShortcutSpec,
+    _create_session_options,
     _qt_to_xdg_trigger,
+    _request_options,
     _request_path,
+    _shortcut_payload,
 )
 
 
@@ -62,6 +65,32 @@ def test_request_path_uses_xdg_sender_convention() -> None:
     assert _request_path(":1.234", "magicscribe_test") == (
         "/org/freedesktop/portal/desktop/request/1_234/magicscribe_test"
     )
+
+
+def test_portal_vardicts_use_plain_scalar_values() -> None:
+    create = _create_session_options("create_token", "session_token")
+    bind = _request_options("bind_token")
+    shortcuts = _shortcut_payload((
+        ShortcutSpec("toggle_draw", "Toggle drawing", "F9"),
+    ))
+
+    assert create == {
+        "handle_token": "create_token",
+        "session_handle_token": "session_token",
+    }
+    assert bind == {"handle_token": "bind_token"}
+    assert shortcuts == [
+        (
+            "toggle_draw",
+            {
+                "description": "Toggle drawing",
+                "preferred_trigger": "F9",
+            },
+        )
+    ]
+    assert all(isinstance(value, str) for value in create.values())
+    assert all(isinstance(value, str) for value in bind.values())
+    assert all(isinstance(value, str) for value in shortcuts[0][1].values())
 
 
 def test_service_requests_exact_drawing_shortcuts_and_is_idempotent(tmp_path) -> None:
