@@ -16,8 +16,20 @@ The QML boundary is intentionally small: `DrawingAdapter`, `ToolAdapter`, `Shell
 python -m compileall -q config core ui main.py
 pyside6-qmllint --max-warnings 0 -I ui/qml ui/qml/MagicScribe/*.qml
 python -m pytest -q
-bash -n install.sh
+bash -n install.sh scripts/local_desktop_gate.sh
 ```
+
+## Local desktop parity gate
+
+The remaining KDE/KWin parity checks are intentionally interactive. On the target CachyOS desktop run:
+
+```bash
+bash scripts/local_desktop_gate.sh
+```
+
+The harness records session/portal information, per-run application logs, Linux PSS from `/proc/<pid>/smaps_rollup`, global/local shortcut behavior, overlay/floating-window observations and lifecycle results under `~/.local/state/magicscribe/desktop-gate-<timestamp>/`.
+
+A zero exit status means the interactive report contains no FAIL or SKIP entries. Exit code `2` means at least one check failed; exit code `3` means the gate is incomplete because at least one check was skipped. Review the generated report before closing issue #6.
 
 ## Deliberate migration gate
 

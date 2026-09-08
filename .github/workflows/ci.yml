@@ -50,8 +50,8 @@ jobs:
           print(f"Qt {qVersion()} / PySide6 runtime OK (QtDBus available)")
           PY
 
-      - name: Validate installer syntax
-        run: bash -n install.sh
+      - name: Validate shell syntax
+        run: bash -n install.sh scripts/local_desktop_gate.sh
 
       - name: Compile Python sources
         run: python -m compileall -q config core ui main.py
