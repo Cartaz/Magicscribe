@@ -27,6 +27,7 @@ from jeepney.io.blocking import open_dbus_connection
 
 from config.constants import HotkeyDefaults
 from core.app_controller import AppController
+from ui.native.portal_registry import register_host_app
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +240,10 @@ class PortalGlobalShortcutBackend(QObject):
         connection = None
         try:
             connection = open_dbus_connection(bus="SESSION")
+            # Host apps launched from a terminal can otherwise inherit the
+            # terminal's app-id (observed as org.kde.konsole on KDE). The XDG
+            # Registry must be called on this same peer before portal methods.
+            register_host_app(connection, timeout=_METHOD_REPLY_TIMEOUT)
             with (
                 connection.filter(response_rule, bufsize=16) as responses,
                 connection.filter(activated_rule, bufsize=32) as activations,
