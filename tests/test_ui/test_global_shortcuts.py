@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtDBus import QDBusConnection
+from jeepney import HeaderFields
 
 from config.settings import Settings
 from core.app_controller import AppController
@@ -13,8 +13,10 @@ from core.event_bus import event_bus
 from ui.adapters.shell_adapter import ShellAdapter
 from ui.native.global_shortcuts import (
     GlobalShortcutService,
-    PortalGlobalShortcutBackend,
     ShortcutSpec,
+    _bind_shortcuts_message,
+    _bound_shortcut_ids,
+    _create_session_message,
     _create_session_options,
     _qt_to_xdg_trigger,
     _request_options,
@@ -67,7 +69,7 @@ def test_request_path_uses_xdg_sender_convention() -> None:
     )
 
 
-def test_portal_vardicts_use_plain_scalar_values() -> None:
+def test_portal_vardicts_use_explicit_variant_signatures() -> None:
     create = _create_session_options("create_token", "session_token")
     bind = _request_options("bind_token")
     shortcuts = _shortcut_payload((
@@ -75,22 +77,57 @@ def test_portal_vardicts_use_plain_scalar_values() -> None:
     ))
 
     assert create == {
-        "handle_token": "create_token",
-        "session_handle_token": "session_token",
+        "handle_token": ("s", "create_token"),
+        "session_handle_token": ("s", "session_token"),
     }
-    assert bind == {"handle_token": "bind_token"}
+    assert bind == {"handle_token": ("s", "bind_token")}
     assert shortcuts == [
         (
             "toggle_draw",
             {
-                "description": "Toggle drawing",
-                "preferred_trigger": "F9",
+                "description": ("s", "Toggle drawing"),
+                "preferred_trigger": ("s", "F9"),
             },
         )
     ]
-    assert all(isinstance(value, str) for value in create.values())
-    assert all(isinstance(value, str) for value in bind.values())
-    assert all(isinstance(value, str) for value in shortcuts[0][1].values())
+
+
+def test_portal_messages_serialize_exact_compound_signatures() -> None:
+    shortcuts = (
+        ShortcutSpec("toggle_draw", "Toggle drawing", "F9"),
+        ShortcutSpec("undo", "Undo", "F8"),
+    )
+    create = _create_session_message("create_token", "session_token")
+    bind = _bind_shortcuts_message(
+        "/org/freedesktop/portal/desktop/session/1_2/session_token",
+        shortcuts,
+        "x11:abc",
+        "bind_token",
+    )
+
+    assert create.header.fields[HeaderFields.signature] == "a{sv}"
+    assert bind.header.fields[HeaderFields.signature] == "oa(sa{sv})sa{sv}"
+
+    # La serializzazione e' il guardrail che mancava al precedente backend
+    # PySide6: tuple/dict non devono degradare a un PyObjectWrapper runtime.
+    assert create.serialise(serial=1)
+    assert bind.serialise(serial=2)
+
+
+def test_bound_shortcut_ids_fail_closed_on_partial_result() -> None:
+    results = {
+        "shortcuts": (
+            "a(sa{sv})",
+            [
+                (
+                    "toggle_draw",
+                    {"trigger_description": ("s", "F9")},
+                )
+            ],
+        )
+    }
+    assert _bound_shortcut_ids(results) == {"toggle_draw"}
+    assert _bound_shortcut_ids({}) == set()
 
 
 def test_service_requests_exact_drawing_shortcuts_and_is_idempotent(tmp_path) -> None:
@@ -180,33 +217,17 @@ def test_shell_adapter_exposes_global_fallback_state(tmp_path) -> None:
     event_bus.clear()
 
 
-def test_portal_backend_fails_closed_on_partial_binding() -> None:
-    backend = PortalGlobalShortcutBackend(bus=QDBusConnection.sessionBus())
-    backend._requested_ids = {"toggle_draw", "undo"}
-    outcomes: list[tuple[bool, str]] = []
-    backend.registrationFinished.connect(
-        lambda success, message: outcomes.append((success, message))
-    )
-
-    backend._on_bind_response(
-        0,
-        {"shortcuts": [("toggle_draw", {"trigger_description": "F9"})]},
-    )
-
-    assert outcomes
-    assert outcomes[-1][0] is False
-    assert "tutte" in outcomes[-1][1]
-
-
-def test_portal_backend_source_never_waits_synchronously() -> None:
+def test_portal_backend_isolated_from_qtdbus_and_gui_blocking() -> None:
     source = (
         Path(__file__).resolve().parents[2]
         / "ui"
         / "native"
         / "global_shortcuts.py"
     ).read_text(encoding="utf-8")
+    assert "PySide6.QtDBus" not in source
     assert "waitForFinished(" not in source
     assert "BlockWithGui" not in source
+    assert "threading.Thread(" in source
 
 
 def test_qml_disables_exactly_five_local_drawing_shortcuts() -> None:
