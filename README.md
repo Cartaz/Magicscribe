@@ -1,6 +1,6 @@
 # MagicScribe
 
-MagicScribe is a local on-screen annotation application for KDE Plasma.
+MagicScribe is a lightweight, local-first screen annotation tool for KDE Plasma/Linux, inspired by Epic Pen. It lets you draw directly over any application with pen, smooth-stroke, line, rectangle, circle and eraser tools, with undo/redo, annotation visibility, clear-screen actions and keyboard shortcuts. The desktop UI is built with PySide6 and Qt Quick/QML; no web stack or remote service is required.
 
 ## Runtime architecture
 
