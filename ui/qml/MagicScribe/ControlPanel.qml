@@ -76,12 +76,14 @@ ApplicationWindow {
         onActivated: root.shellAdapter.quit_application()
     }
 
-    RaisedSurface {
+    // Deliberately flat outer shell: desktop-floating chrome must not cast
+    // highlight/shadow halos onto whatever is underneath it.
+    Rectangle {
         id: toolbarSurface
         anchors.fill: parent
         anchors.margins: 12
         radius: Theme.radiusXL
-        strong: true
+        color: Theme.surface
 
         Column {
             id: toolbarColumn
