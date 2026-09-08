@@ -62,7 +62,7 @@ Window {
 
     TapHandler {
         acceptedButtons: Qt.LeftButton
-        onTapped: root.shellAdapter.restoreControlPanel()
+        onTapped: root.shellAdapter.restore_control_panel()
     }
 
     DragHandler {
