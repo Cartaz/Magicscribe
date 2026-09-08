@@ -54,7 +54,7 @@ jobs:
         run: bash -n install.sh scripts/local_desktop_gate.sh
 
       - name: Compile Python sources
-        run: python -m compileall -q config core ui main.py
+        run: python -m compileall -q config core ui scripts main.py
 
       - name: Lint QML
         run: pyside6-qmllint --max-warnings 0 -I ui/qml ui/qml/MagicScribe/*.qml
