@@ -80,6 +80,7 @@ Button {
 
     contentItem: Item {
         Image {
+            id: iconImage
             anchors.centerIn: parent
             width: 22
             height: 22
@@ -88,7 +89,20 @@ Button {
             sourceSize.height: 22
             fillMode: Image.PreserveAspectFit
             smooth: true
+            visible: false
+        }
+
+        MultiEffect {
+            anchors.fill: iconImage
+            source: iconImage
+            colorization: 1.0
+            colorizationColor: control.selected && control.enabled
+                               ? Theme.accent : Theme.textPrimary
             opacity: !control.enabled ? 0.34 : (control.pressed ? 0.62 : 0.92)
+
+            Behavior on colorizationColor {
+                ColorAnimation { duration: Theme.animationFast }
+            }
         }
     }
 
