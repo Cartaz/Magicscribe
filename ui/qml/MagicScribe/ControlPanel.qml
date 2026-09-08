@@ -33,26 +33,26 @@ ApplicationWindow {
 
     onClosing: function(close) {
         close.accepted = false
-        root.shellAdapter.quitApplication()
+        root.shellAdapter.quit_application()
     }
 
     Shortcut {
         sequence: root.shellAdapter.toggleDrawingShortcut
         context: Qt.WindowShortcut
         enabled: !root.shellAdapter.globalDrawingShortcutsActive
-        onActivated: root.drawingAdapter.toggleDrawing()
+        onActivated: root.drawingAdapter.toggle_drawing()
     }
     Shortcut {
         sequence: root.shellAdapter.visibilityShortcut
         context: Qt.WindowShortcut
         enabled: !root.shellAdapter.globalDrawingShortcutsActive
-        onActivated: root.drawingAdapter.toggleVisibility()
+        onActivated: root.drawingAdapter.toggle_visibility()
     }
     Shortcut {
         sequence: root.shellAdapter.clearShortcut
         context: Qt.WindowShortcut
         enabled: !root.shellAdapter.globalDrawingShortcutsActive
-        onActivated: root.drawingAdapter.clearScreen()
+        onActivated: root.drawingAdapter.clear_screen()
     }
     Shortcut {
         sequence: root.shellAdapter.undoShortcut
@@ -69,12 +69,12 @@ ApplicationWindow {
     Shortcut {
         sequence: root.shellAdapter.minimizeShortcut
         context: Qt.WindowShortcut
-        onActivated: root.shellAdapter.minimizeToFloating()
+        onActivated: root.shellAdapter.minimize_to_floating()
     }
     Shortcut {
         sequence: root.shellAdapter.quitShortcut
         context: Qt.WindowShortcut
-        onActivated: root.shellAdapter.quitApplication()
+        onActivated: root.shellAdapter.quit_application()
     }
 
     ScrollView {
@@ -171,7 +171,7 @@ ApplicationWindow {
                                   ? "Disegno ATTIVO — disattiva"
                                   : "Attiva disegno"
                             selected: root.drawingAdapter.active
-                            onClicked: root.drawingAdapter.toggleDrawing()
+                            onClicked: root.drawingAdapter.toggle_drawing()
                         }
                         ShortcutBadge { text: root.shellAdapter.toggleDrawingShortcut }
                     }
@@ -184,8 +184,7 @@ ApplicationWindow {
                             text: root.drawingAdapter.annotationsVisible
                                   ? "Nascondi annotazioni"
                                   : "Mostra annotazioni"
-                            enabled: root.drawingAdapter.active
-                            onClicked: root.drawingAdapter.toggleVisibility()
+                            onClicked: root.drawingAdapter.toggle_visibility()
                         }
                         ShortcutBadge { text: root.shellAdapter.visibilityShortcut }
                     }
@@ -196,8 +195,7 @@ ApplicationWindow {
                         NeuButton {
                             Layout.fillWidth: true
                             text: "Cancella schermo"
-                            enabled: root.drawingAdapter.active
-                            onClicked: root.drawingAdapter.clearScreen()
+                            onClicked: root.drawingAdapter.clear_screen()
                         }
                         ShortcutBadge { text: root.shellAdapter.clearShortcut }
                     }
@@ -300,7 +298,7 @@ ApplicationWindow {
                                 compact: true
                                 text: glyph + "  " + displayLabel
                                 selected: root.toolAdapter.currentTool === toolId
-                                onClicked: root.toolAdapter.selectTool(toolId)
+                                onClicked: root.toolAdapter.select_tool(toolId)
                             }
                         }
                     }
@@ -328,7 +326,7 @@ ApplicationWindow {
                                 implicitHeight: 28
                                 hoverEnabled: true
                                 focusPolicy: Qt.StrongFocus
-                                onClicked: root.toolAdapter.setColor(modelData)
+                                onClicked: root.toolAdapter.set_color(modelData)
 
                                 background: Rectangle {
                                     radius: 14
@@ -367,7 +365,7 @@ ApplicationWindow {
 
                             onPressedChanged: {
                                 if (!pressed)
-                                    root.toolAdapter.setSize(Math.round(value))
+                                    root.toolAdapter.set_size(Math.round(value))
                             }
 
                             background: InsetSurface {
@@ -432,7 +430,7 @@ ApplicationWindow {
                     text: "Riduci"
                     compact: true
                     Layout.preferredWidth: 84
-                    onClicked: root.shellAdapter.minimizeToFloating()
+                    onClicked: root.shellAdapter.minimize_to_floating()
                 }
 
                 ShortcutBadge { text: root.shellAdapter.minimizeShortcut }
