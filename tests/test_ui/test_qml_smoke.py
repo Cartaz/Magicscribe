@@ -73,6 +73,8 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
         assert isinstance(control_window, QWindow)
         assert control_window.objectName() == "controlPanel"
         assert control_window.isVisible() is False
+        assert control_window.width() == 104
+        assert control_window.height() == 700
 
         assert overlay_surface.window.objectName() == "overlayWindow"
         assert overlay_surface.canvas.objectName() == "drawingCanvas"
@@ -81,6 +83,8 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
         floating_window = floating_object
         assert floating_window.objectName() == "floatingPalette"
         assert floating_window.isVisible() is False
+        assert floating_window.width() == 58
+        assert floating_window.height() == 58
 
         # Esercita realmente il boundary QML -> Python. In PySide6 6.11.2 con
         # Python 3.14 gli Slot rinominati tramite @Slot(name=...) possono
