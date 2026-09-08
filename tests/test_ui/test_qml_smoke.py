@@ -8,7 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QWindow
-from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
+from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlExpression
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
 
@@ -81,6 +81,20 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
         floating_window = floating_object
         assert floating_window.objectName() == "floatingPalette"
         assert floating_window.isVisible() is False
+
+        # Esercita realmente il boundary QML -> Python. In PySide6 6.11.2 con
+        # Python 3.14 gli Slot rinominati tramite @Slot(name=...) possono
+        # segfaultare proprio in questo passaggio; usiamo il nome Python nativo.
+        expression = QQmlExpression(
+            engine.rootContext(),
+            control_window,
+            "drawingAdapter.toggle_drawing()",
+        )
+        expression.evaluate()
+        assert not expression.hasError(), expression.error().toString()
+        assert drawing_adapter.active is True
+        drawing_adapter.toggle_drawing()
+        assert drawing_adapter.active is False
 
         overlay_surface.show()
         coordinator.set_control_window(control_window)
