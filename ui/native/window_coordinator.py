@@ -18,6 +18,7 @@ class WindowCoordinator:
     dominio. Pannello e floating palette restano presentazione QML.
     """
 
+    _CONTROL_MARGIN = 20
     _FLOATING_MARGIN = 20
 
     def __init__(self, overlay_window: QWindow) -> None:
@@ -44,8 +45,10 @@ class WindowCoordinator:
             self._last_floating_pos = floating.position()
             floating.hide()
 
-        if self._last_control_pos is not None:
-            window.setPosition(self._last_control_pos)
+        target_pos = self._last_control_pos
+        if target_pos is None:
+            target_pos = self._default_control_position(window)
+        window.setPosition(target_pos)
         window.show()
         window.raise_()
         window.requestActivate()
@@ -102,6 +105,20 @@ class WindowCoordinator:
     def quit_application(self) -> None:
         self.shutdown()
         QApplication.quit()
+
+    def _default_control_position(self, window: QWindow) -> QPoint:
+        """Posiziona la toolbar sul lato sinistro senza codificare un monitor."""
+        screen = window.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return QPoint(100, 100)
+
+        geometry = screen.availableGeometry()
+        x = geometry.left() + self._CONTROL_MARGIN
+        if window.height() + 2 * self._CONTROL_MARGIN <= geometry.height():
+            y = geometry.top() + (geometry.height() - window.height()) // 2
+        else:
+            y = geometry.top() + self._CONTROL_MARGIN
+        return QPoint(x, y)
 
     def _default_floating_position(self, window: QWindow) -> QPoint:
         screen = window.screen() or QApplication.primaryScreen()
