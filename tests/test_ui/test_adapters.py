@@ -54,7 +54,10 @@ def test_drawing_adapter_reflects_history_after_actions(tmp_path) -> None:
 def test_qml_adapters_never_alias_slot_names() -> None:
     """PySide6 6.11.2/Python 3.14 can crash on QML -> @Slot(name=...)."""
     root = Path(__file__).resolve().parents[2]
-    alias_pattern = re.compile(r"@Slot\([^)]*\bname\s*=")
+    alias_pattern = re.compile(
+        r"^\s*@Slot\([^)]*\bname\s*=",
+        re.MULTILINE,
+    )
 
     for relative_path in (
         "ui/adapters/drawing_adapter.py",
