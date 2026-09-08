@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from PySide6.QtWidgets import QApplication
+
 from config.settings import Settings
 from core.app_controller import AppController
 from core.event_bus import event_bus
@@ -10,24 +12,44 @@ from ui.adapters.drawing_adapter import DrawingAdapter
 from ui.adapters.tool_adapter import ToolAdapter
 from ui.models.tool_list_model import ToolListModel
 
+_APP = QApplication.instance() or QApplication([])
+
 
 def _controller(tmp_path) -> AppController:
     settings = Settings(path=tmp_path / "adapter_settings.json")
     return AppController(settings)
 
 
-def test_drawing_adapter_reflects_controller_and_history(tmp_path) -> None:
+def _flush_qt_events() -> None:
+    _APP.processEvents()
+
+
+def test_drawing_adapter_queues_qml_actions_outside_meta_call(tmp_path) -> None:
     event_bus.clear()
     controller = _controller(tmp_path)
     adapter = DrawingAdapter(controller)
     active_changes = []
-    history_changes = []
     adapter.activeChanged.connect(lambda: active_changes.append(True))
-    adapter.historyChanged.connect(lambda: history_changes.append(True))
 
     adapter.toggle_drawing()
+
+    # Il boundary QML deve restituire prima che il controller emetta notify:
+    # evita la re-entrancy PySide QML -> Python -> QML osservata su xcb.
+    assert adapter.active is False
+    assert active_changes == []
+
+    _flush_qt_events()
     assert adapter.active is True
-    assert len(active_changes) == 1
+    assert active_changes == [True]
+    event_bus.clear()
+
+
+def test_drawing_adapter_reflects_history_after_queued_actions(tmp_path) -> None:
+    event_bus.clear()
+    controller = _controller(tmp_path)
+    adapter = DrawingAdapter(controller)
+    history_changes = []
+    adapter.historyChanged.connect(lambda: history_changes.append(True))
 
     stroke = Stroke(tool_type=ToolType.PEN, points=[Point(1, 2)])
     controller.finalize_stroke(stroke)
@@ -36,6 +58,8 @@ def test_drawing_adapter_reflects_controller_and_history(tmp_path) -> None:
     assert len(history_changes) == 1
 
     adapter.undo()
+    assert adapter.canRedo is False
+    _flush_qt_events()
     assert adapter.canRedo is True
     event_bus.clear()
 

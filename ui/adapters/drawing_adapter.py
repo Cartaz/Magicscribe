@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from collections.abc import Callable
+
+from PySide6.QtCore import QObject, Property, QTimer, Signal, Slot
 
 from core.app_controller import AppController
 from core.event_bus import event_bus
@@ -14,6 +16,10 @@ class DrawingAdapter(QObject):
 
     Le Property/Slot costituiscono l'API QML. I metodi Python non decorati sono
     usati dal QQuickPaintedItem e mantengono il controller/core fuori da QML.
+
+    Le mutazioni richieste da QML vengono accodate al giro successivo del loop
+    Qt. In questo modo i notify signal non rientrano in PySide mentre e' ancora
+    in corso il metacall QML -> Python che ha originato l'azione.
     """
 
     activeChanged = Signal()
@@ -57,25 +63,28 @@ class DrawingAdapter(QObject):
 
     strokeCount = Property(int, _get_stroke_count, notify=historyChanged)
 
+    def _queue_action(self, action: Callable[[], None]) -> None:
+        QTimer.singleShot(0, action)
+
     @Slot(name="toggleDrawing")
     def toggle_drawing(self) -> None:
-        self._controller.toggle_drawing()
+        self._queue_action(self._controller.toggle_drawing)
 
     @Slot(name="toggleVisibility")
     def toggle_visibility(self) -> None:
-        self._controller.toggle_visibility()
+        self._queue_action(self._controller.toggle_visibility)
 
     @Slot(name="clearScreen")
     def clear_screen(self) -> None:
-        self._controller.clear_screen()
+        self._queue_action(self._controller.clear_screen)
 
     @Slot()
     def undo(self) -> None:
-        self._controller.undo()
+        self._queue_action(self._controller.undo)
 
     @Slot()
     def redo(self) -> None:
-        self._controller.redo()
+        self._queue_action(self._controller.redo)
 
     # API Python-only del canvas. Non e' esposta come Slot a QML.
     def create_current_stroke(self) -> Stroke:
