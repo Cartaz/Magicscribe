@@ -8,6 +8,7 @@ dalla presentazione QML.
 
 from __future__ import annotations
 
+import faulthandler
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -133,6 +134,7 @@ def _create_floating_palette(
 
 def main() -> None:
     """Crea servizi, adapter, superfici Qt Quick e avvia l'event loop."""
+    faulthandler.enable(all_threads=True)
     _setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Avvio %s v%s", AppMeta.NAME, AppMeta.VERSION)
