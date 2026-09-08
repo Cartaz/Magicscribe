@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QApplication
+import re
+from pathlib import Path
 
 from config.settings import Settings
 from core.app_controller import AppController
@@ -12,19 +13,13 @@ from ui.adapters.drawing_adapter import DrawingAdapter
 from ui.adapters.tool_adapter import ToolAdapter
 from ui.models.tool_list_model import ToolListModel
 
-_APP = QApplication.instance() or QApplication([])
-
 
 def _controller(tmp_path) -> AppController:
     settings = Settings(path=tmp_path / "adapter_settings.json")
     return AppController(settings)
 
 
-def _flush_qt_events() -> None:
-    _APP.processEvents()
-
-
-def test_drawing_adapter_queues_qml_actions_outside_meta_call(tmp_path) -> None:
+def test_drawing_adapter_actions_are_synchronous(tmp_path) -> None:
     event_bus.clear()
     controller = _controller(tmp_path)
     adapter = DrawingAdapter(controller)
@@ -33,18 +28,12 @@ def test_drawing_adapter_queues_qml_actions_outside_meta_call(tmp_path) -> None:
 
     adapter.toggle_drawing()
 
-    # Il boundary QML deve restituire prima che il controller emetta notify:
-    # evita la re-entrancy PySide QML -> Python -> QML osservata su xcb.
-    assert adapter.active is False
-    assert active_changes == []
-
-    _flush_qt_events()
     assert adapter.active is True
     assert active_changes == [True]
     event_bus.clear()
 
 
-def test_drawing_adapter_reflects_history_after_queued_actions(tmp_path) -> None:
+def test_drawing_adapter_reflects_history_after_actions(tmp_path) -> None:
     event_bus.clear()
     controller = _controller(tmp_path)
     adapter = DrawingAdapter(controller)
@@ -58,10 +47,59 @@ def test_drawing_adapter_reflects_history_after_queued_actions(tmp_path) -> None
     assert len(history_changes) == 1
 
     adapter.undo()
-    assert adapter.canRedo is False
-    _flush_qt_events()
     assert adapter.canRedo is True
     event_bus.clear()
+
+
+def test_qml_adapters_never_alias_slot_names() -> None:
+    """PySide6 6.11.2/Python 3.14 can crash on QML -> @Slot(name=...)."""
+    root = Path(__file__).resolve().parents[2]
+    alias_pattern = re.compile(
+        r"^\s*@Slot\([^)]*\bname\s*=",
+        re.MULTILINE,
+    )
+
+    for relative_path in (
+        "ui/adapters/drawing_adapter.py",
+        "ui/adapters/tool_adapter.py",
+        "ui/adapters/shell_adapter.py",
+    ):
+        source = (root / relative_path).read_text(encoding="utf-8")
+        assert alias_pattern.search(source) is None, relative_path
+
+
+def test_qml_calls_native_snake_case_slot_names() -> None:
+    root = Path(__file__).resolve().parents[2] / "ui" / "qml" / "MagicScribe"
+    source = "\n".join(
+        (root / name).read_text(encoding="utf-8")
+        for name in ("ControlPanel.qml", "FloatingPalette.qml")
+    )
+
+    for call in (
+        "toggle_drawing(",
+        "toggle_visibility(",
+        "clear_screen(",
+        "select_tool(",
+        "set_color(",
+        "set_size(",
+        "minimize_to_floating(",
+        "restore_control_panel(",
+        "quit_application(",
+    ):
+        assert call in source
+
+    for old_call in (
+        "toggleDrawing(",
+        "toggleVisibility(",
+        "clearScreen(",
+        "selectTool(",
+        "setColor(",
+        "setSize(",
+        "minimizeToFloating(",
+        "restoreControlPanel(",
+        "quitApplication(",
+    ):
+        assert old_call not in source
 
 
 def test_tool_adapter_uses_canonical_tool_manager(tmp_path) -> None:
