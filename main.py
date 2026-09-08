@@ -38,6 +38,7 @@ from ui.adapters.shell_adapter import ShellAdapter
 from ui.adapters.tool_adapter import ToolAdapter
 from ui.models.tool_list_model import ToolListModel
 from ui.native.global_shortcuts import GlobalShortcutService
+from ui.native.single_instance import SingleInstanceGuard
 from ui.native.window_coordinator import WindowCoordinator
 from ui.quick.overlay_surface import OverlaySurface
 from ui.tray_icon import TrayIcon
@@ -141,87 +142,98 @@ def main() -> None:
         os.environ.get("XDG_SESSION_TYPE", "sconosciuto"),
     )
 
-    app = QApplication(sys.argv)
-    app.setApplicationName(AppMeta.NAME)
-    app.setOrganizationName(AppMeta.ORG_NAME)
-    app.setApplicationDisplayName(AppMeta.DISPLAY_NAME)
-    app.setDesktopFileName(AppMeta.ORG_NAME)
-    app.setQuitOnLastWindowClosed(True)
-
-    app_dir = Path(__file__).resolve().parent
-    _set_application_icon(app, app_dir)
-
-    settings = Settings(
-        on_change=lambda key, val: event_bus.emit(
-            "config_changed", key=key, value=val,
-        ),
-        background_persistence=True,
-    )
-    settings.load()
-    controller = AppController(settings)
-
-    drawing_adapter = DrawingAdapter(controller)
-    tool_adapter = ToolAdapter(controller)
-    tool_model = ToolListModel()
-
-    # Deve precedere la creazione di qualsiasi QQuickWindow traslucida.
-    QQuickWindow.setDefaultAlphaBuffer(True)
-
-    overlay_surface = OverlaySurface(drawing_adapter, tool_adapter)
-    overlay_surface.show()
-    window_coordinator = WindowCoordinator(overlay_surface.window)
-    global_shortcuts = GlobalShortcutService(controller)
-    shell_adapter = ShellAdapter(window_coordinator, global_shortcuts)
-
-    drawing_adapter.activeChanged.connect(
-        lambda: QTimer.singleShot(50, window_coordinator.ensure_z_order)
-    )
-
-    exit_code = 1
-    try:
-        engine = QQmlApplicationEngine()
-        qml_import_root = app_dir / "ui" / "qml"
-        engine.addImportPath(str(qml_import_root))
-        engine.setInitialProperties({
-            "drawingAdapter": drawing_adapter,
-            "toolAdapter": tool_adapter,
-            "shellAdapter": shell_adapter,
-            "toolModel": tool_model,
-        })
-        engine.loadFromModule("MagicScribe", "ControlPanel")
-
-        roots = engine.rootObjects()
-        if not roots or not isinstance(roots[0], QWindow):
-            logger.critical("Impossibile creare il pannello QML MagicScribe")
-            raise SystemExit(1)
-
-        control_window = roots[0]
-        floating_component, floating_window = _create_floating_palette(
-            engine,
-            drawing_adapter,
-            shell_adapter,
-            logger,
+    instance_guard = SingleInstanceGuard()
+    if not instance_guard.acquire():
+        logger.warning(
+            "%s è già in esecuzione; il secondo avvio viene ignorato",
+            AppMeta.NAME,
         )
-        window_coordinator.set_control_window(control_window)
-        window_coordinator.set_floating_window(floating_window)
+        return
 
-        global_shortcuts.start(_portal_parent_window(control_window))
-        tray = TrayIcon(controller, window_coordinator.restore_control_panel)
+    try:
+        app = QApplication(sys.argv)
+        app.setApplicationName(AppMeta.NAME)
+        app.setOrganizationName(AppMeta.ORG_NAME)
+        app.setApplicationDisplayName(AppMeta.DISPLAY_NAME)
+        app.setDesktopFileName(AppMeta.ORG_NAME)
+        app.setQuitOnLastWindowClosed(True)
 
-        if settings.get("show_control_on_start"):
-            window_coordinator.show_control_panel()
+        app_dir = Path(__file__).resolve().parent
+        _set_application_icon(app, app_dir)
 
-        QTimer.singleShot(200, window_coordinator.ensure_z_order)
+        settings = Settings(
+            on_change=lambda key, val: event_bus.emit(
+                "config_changed", key=key, value=val,
+            ),
+            background_persistence=True,
+        )
+        settings.load()
+        controller = AppController(settings)
 
-        logger.info("Applicazione avviata con shell e overlay Qt Quick")
-        exit_code = app.exec()
+        drawing_adapter = DrawingAdapter(controller)
+        tool_adapter = ToolAdapter(controller)
+        tool_model = ToolListModel()
+
+        # Deve precedere la creazione di qualsiasi QQuickWindow traslucida.
+        QQuickWindow.setDefaultAlphaBuffer(True)
+
+        overlay_surface = OverlaySurface(drawing_adapter, tool_adapter)
+        overlay_surface.show()
+        window_coordinator = WindowCoordinator(overlay_surface.window)
+        global_shortcuts = GlobalShortcutService(controller)
+        shell_adapter = ShellAdapter(window_coordinator, global_shortcuts)
+
+        drawing_adapter.activeChanged.connect(
+            lambda: QTimer.singleShot(50, window_coordinator.ensure_z_order)
+        )
+
+        exit_code = 1
+        try:
+            engine = QQmlApplicationEngine()
+            qml_import_root = app_dir / "ui" / "qml"
+            engine.addImportPath(str(qml_import_root))
+            engine.setInitialProperties({
+                "drawingAdapter": drawing_adapter,
+                "toolAdapter": tool_adapter,
+                "shellAdapter": shell_adapter,
+                "toolModel": tool_model,
+            })
+            engine.loadFromModule("MagicScribe", "ControlPanel")
+
+            roots = engine.rootObjects()
+            if not roots or not isinstance(roots[0], QWindow):
+                logger.critical("Impossibile creare il pannello QML MagicScribe")
+                raise SystemExit(1)
+
+            control_window = roots[0]
+            floating_component, floating_window = _create_floating_palette(
+                engine,
+                drawing_adapter,
+                shell_adapter,
+                logger,
+            )
+            window_coordinator.set_control_window(control_window)
+            window_coordinator.set_floating_window(floating_window)
+
+            global_shortcuts.start(_portal_parent_window(control_window))
+            tray = TrayIcon(controller, window_coordinator.restore_control_panel)
+
+            if settings.get("show_control_on_start"):
+                window_coordinator.show_control_panel()
+
+            QTimer.singleShot(200, window_coordinator.ensure_z_order)
+
+            logger.info("Applicazione avviata con shell e overlay Qt Quick")
+            exit_code = app.exec()
+        finally:
+            global_shortcuts.shutdown()
+            window_coordinator.shutdown()
+            settings.close()
+
+        logger.info("Applicazione terminata (codice %d)", exit_code)
+        sys.exit(exit_code)
     finally:
-        global_shortcuts.shutdown()
-        window_coordinator.shutdown()
-        settings.close()
-
-    logger.info("Applicazione terminata (codice %d)", exit_code)
-    sys.exit(exit_code)
+        instance_guard.release()
 
 
 if __name__ == "__main__":
