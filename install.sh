@@ -61,22 +61,22 @@ echo "[2/7] Installazione dipendenze..."
 "${VENV_DIR}/bin/python" -m pip install -r "${SCRIPT_DIR}/requirements.txt" --quiet
 echo "     Dipendenze installate."
 
-# 3. Verifica runtime Qt/PySide6
-echo "[3/7] Verifica runtime PySide6/Qt..."
+# 3. Verifica runtime Qt/PySide6 + D-Bus
+echo "[3/7] Verifica runtime PySide6/Qt e D-Bus..."
 "${VENV_DIR}/bin/python" - <<'PY'
 from PySide6.QtCore import qVersion
-from PySide6.QtDBus import QDBusConnection
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
+import jeepney
 
 version = tuple(int(part) for part in qVersion().split(".")[:3])
 if version < (6, 11, 0):
     raise SystemExit(f"Qt 6.11+ richiesto, trovato {qVersion()}")
 
-assert QDBusConnection is not None
 assert QQmlApplicationEngine is not None
 assert QApplication is not None
-print(f"     PySide6/Qt {qVersion()} OK (QtDBus disponibile)")
+assert jeepney is not None
+print(f"     PySide6/Qt {qVersion()} OK (Jeepney D-Bus disponibile)")
 PY
 
 # 4. Verifica modulo QML
