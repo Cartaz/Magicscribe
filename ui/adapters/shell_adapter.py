@@ -61,14 +61,14 @@ class ShellAdapter(QObject):
         service = self._global_shortcuts
         return service is not None and service.active
 
-    @Slot(name="minimizeToFloating")
+    @Slot()
     def minimize_to_floating(self) -> None:
         self._coordinator.minimize_to_floating()
 
-    @Slot(name="restoreControlPanel")
+    @Slot()
     def restore_control_panel(self) -> None:
         self._coordinator.restore_control_panel()
 
-    @Slot(name="quitApplication")
+    @Slot()
     def quit_application(self) -> None:
         self._coordinator.quit_application()
