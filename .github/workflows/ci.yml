@@ -34,20 +34,20 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Verify PySide6 and Qt
+      - name: Verify PySide6, Qt and D-Bus runtime
         run: |
           python - <<'PY'
           from PySide6.QtCore import qVersion
-          from PySide6.QtDBus import QDBusConnection
           from PySide6.QtQml import QQmlApplicationEngine
           from PySide6.QtWidgets import QApplication
+          import jeepney
 
           version = tuple(int(part) for part in qVersion().split(".")[:3])
           assert version >= (6, 11, 0), qVersion()
-          assert QDBusConnection is not None
           assert QQmlApplicationEngine is not None
           assert QApplication is not None
-          print(f"Qt {qVersion()} / PySide6 runtime OK (QtDBus available)")
+          assert jeepney is not None
+          print(f"Qt {qVersion()} / PySide6 runtime OK (Jeepney D-Bus available)")
           PY
 
       - name: Validate shell syntax
