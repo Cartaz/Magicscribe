@@ -10,8 +10,8 @@ Window {
     required property var shellAdapter
 
     visible: false
-    width: 80
-    height: 80
+    width: 58
+    height: 58
     color: "transparent"
     title: "MagicScribe"
     flags: Qt.FramelessWindowHint
@@ -22,9 +22,9 @@ Window {
     RaisedSurface {
         id: paletteSurface
         anchors.centerIn: parent
-        width: 52
-        height: 52
-        radius: 26
+        width: 40
+        height: 40
+        radius: 20
 
         Rectangle {
             anchors.fill: parent
@@ -40,9 +40,11 @@ Window {
 
         Image {
             anchors.centerIn: parent
-            width: 28
-            height: 28
+            width: 22
+            height: 22
             source: "../../../assets/icons/png/magicscribe_48.png"
+            sourceSize.width: 22
+            sourceSize.height: 22
             fillMode: Image.PreserveAspectFit
             smooth: true
         }
@@ -50,8 +52,10 @@ Window {
         StatusIndicator {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.rightMargin: -2
-            anchors.bottomMargin: -2
+            anchors.rightMargin: -4
+            anchors.bottomMargin: -4
+            width: 12
+            height: 12
             active: root.drawingAdapter.active
         }
     }

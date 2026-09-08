@@ -2,15 +2,11 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 
 ApplicationWindow {
     id: root
     objectName: "controlPanel"
 
-    // Runtime-injected QObject adapters. `var` is intentional here: the
-    // concrete Python QObject meta-types are not registered as creatable QML
-    // types, while `required` still makes the dependency explicit and mandatory.
     required property var drawingAdapter
     required property var toolAdapter
     required property var shellAdapter
@@ -22,14 +18,17 @@ ApplicationWindow {
     ]
 
     visible: false
-    width: 370
-    height: 690
-    minimumWidth: 340
-    minimumHeight: 520
-    maximumWidth: 440
+    width: 104
+    height: 700
+    minimumWidth: 104
+    minimumHeight: 700
+    maximumWidth: 104
+    maximumHeight: 700
     title: "MagicScribe"
-    color: Theme.surface
-    flags: Qt.Window | Qt.WindowStaysOnTopHint
+    color: "transparent"
+    flags: Qt.FramelessWindowHint
+           | Qt.WindowStaysOnTopHint
+           | Qt.Tool
 
     onClosing: function(close) {
         close.accepted = false
@@ -77,363 +76,300 @@ ApplicationWindow {
         onActivated: root.shellAdapter.quit_application()
     }
 
-    ScrollView {
-        id: scroll
+    RaisedSurface {
+        id: toolbarSurface
         anchors.fill: parent
-        clip: true
-        contentWidth: availableWidth
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        anchors.margins: 12
+        radius: Theme.radiusXL
+        strong: true
 
-        ColumnLayout {
-            width: scroll.availableWidth
-            spacing: 14
+        Column {
+            id: toolbarColumn
+            anchors {
+                top: parent.top
+                bottom: parent.bottom
+                horizontalCenter: parent.horizontalCenter
+                topMargin: 10
+                bottomMargin: 10
+            }
+            width: 64
+            spacing: 5
 
-            Item { Layout.preferredHeight: 4 }
+            Button {
+                id: logoButton
+                objectName: "minimizeButton"
+                width: 48
+                height: 48
+                anchors.horizontalCenter: parent.horizontalCenter
+                hoverEnabled: true
+                focusPolicy: Qt.StrongFocus
+                padding: 0
+                Accessible.name: "Riduci MagicScribe"
 
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.leftMargin: 20
-                Layout.rightMargin: 20
-                spacing: 12
+                background: RaisedSurface {
+                    radius: 24
 
-                Image {
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 24
+                        color: "transparent"
+                        border.width: logoButton.activeFocus || logoButton.pressed ? 1 : 0
+                        border.color: Theme.accent
+                    }
+                }
+
+                contentItem: Image {
                     source: "../../../assets/icons/png/magicscribe_48.png"
-                    sourceSize.width: 40
-                    sourceSize.height: 40
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
+                    sourceSize.width: 30
+                    sourceSize.height: 30
                     fillMode: Image.PreserveAspectFit
+                    smooth: true
                 }
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 1
+                onClicked: root.shellAdapter.minimize_to_floating()
 
-                    Text {
-                        text: "MagicScribe"
-                        color: Theme.textPrimary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 18
-                        font.weight: Font.DemiBold
-                    }
-                    Text {
-                        text: "Annotazioni sullo schermo"
-                        color: Theme.textSecondary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
+                ToolTip.visible: hovered
+                ToolTip.delay: 350
+                ToolTip.text: "Riduci · " + root.shellAdapter.minimizeShortcut
+
+                DragHandler {
+                    target: null
+                    acceptedButtons: Qt.LeftButton
+                    onActiveChanged: {
+                        if (active)
+                            root.startSystemMove()
                     }
                 }
+            }
 
-                StatusIndicator {
+            Button {
+                id: drawingToggle
+                objectName: "drawingToggle"
+                width: 36
+                height: 24
+                anchors.horizontalCenter: parent.horizontalCenter
+                hoverEnabled: true
+                focusPolicy: Qt.StrongFocus
+                padding: 0
+                Accessible.name: root.drawingAdapter.active
+                                 ? "Disattiva disegno"
+                                 : "Attiva disegno"
+
+                background: InsetSurface {
+                    radius: 12
+                    focused: drawingToggle.activeFocus
+                }
+
+                contentItem: StatusIndicator {
                     active: root.drawingAdapter.active
+                    anchors.centerIn: parent
                 }
+
+                onClicked: root.drawingAdapter.toggle_drawing()
+
+                ToolTip.visible: hovered
+                ToolTip.delay: 350
+                ToolTip.text: (root.drawingAdapter.active
+                               ? "Disegno attivo · disattiva"
+                               : "Disegno disattivato · attiva")
+                              + " · " + root.shellAdapter.toggleDrawingShortcut
             }
 
-            Text {
-                Layout.fillWidth: true
-                Layout.leftMargin: 22
-                Layout.rightMargin: 22
-                text: root.drawingAdapter.active ? "Disegno attivo" : "Disegno disattivato"
-                color: root.drawingAdapter.active ? Theme.accent : Theme.textSecondary
-                font.family: Theme.fontFamily
-                font.pixelSize: 12
-                font.weight: Font.Medium
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Qt.rgba(1.0, 1.0, 1.0, 0.07)
             }
 
-            RaisedSurface {
-                Layout.fillWidth: true
-                Layout.leftMargin: 18
-                Layout.rightMargin: 18
-                Layout.preferredHeight: 184
-                strong: true
-                radius: Theme.radiusLarge
+            Column {
+                width: parent.width
+                spacing: 4
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 9
+                Repeater {
+                    model: root.toolModel
 
-                    Text {
-                        text: "DISEGNO"
-                        color: Theme.textSecondary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 1.1
-                    }
+                    delegate: NeuIconButton {
+                        required property string toolId
+                        required property string displayLabel
+                        required property string glyph
+                        required property bool supportsColor
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        NeuButton {
-                            Layout.fillWidth: true
-                            text: root.drawingAdapter.active
-                                  ? "Disegno ATTIVO — disattiva"
-                                  : "Attiva disegno"
-                            selected: root.drawingAdapter.active
-                            onClicked: root.drawingAdapter.toggle_drawing()
-                        }
-                        ShortcutBadge { text: root.shellAdapter.toggleDrawingShortcut }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        NeuButton {
-                            Layout.fillWidth: true
-                            text: root.drawingAdapter.annotationsVisible
-                                  ? "Nascondi annotazioni"
-                                  : "Mostra annotazioni"
-                            onClicked: root.drawingAdapter.toggle_visibility()
-                        }
-                        ShortcutBadge { text: root.shellAdapter.visibilityShortcut }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        NeuButton {
-                            Layout.fillWidth: true
-                            text: "Cancella schermo"
-                            onClicked: root.drawingAdapter.clear_screen()
-                        }
-                        ShortcutBadge { text: root.shellAdapter.clearShortcut }
+                        width: 44
+                        height: 44
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        iconSource: "../../../assets/icons/toolbar/" + toolId + ".svg"
+                        toolTip: displayLabel
+                        selected: root.toolAdapter.currentTool === toolId
+                        onClicked: root.toolAdapter.select_tool(toolId)
                     }
                 }
             }
 
-            RaisedSurface {
-                Layout.fillWidth: true
-                Layout.leftMargin: 18
-                Layout.rightMargin: 18
-                Layout.preferredHeight: 132
-                radius: Theme.radiusMedium
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Qt.rgba(1.0, 1.0, 1.0, 0.07)
+            }
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 9
+            Column {
+                width: parent.width
+                spacing: 4
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Text {
-                            text: "CRONOLOGIA"
-                            color: Theme.textSecondary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                            font.weight: Font.DemiBold
-                            font.letterSpacing: 1.1
-                        }
-                        Item { Layout.fillWidth: true }
-                        Text {
-                            text: root.drawingAdapter.strokeCount + " tratti"
-                            color: Theme.textDim
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                        }
-                    }
+                NeuIconButton {
+                    width: 44
+                    height: 44
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    iconSource: "../../../assets/icons/toolbar/eye.svg"
+                    toolTip: (root.drawingAdapter.annotationsVisible
+                              ? "Nascondi annotazioni"
+                              : "Mostra annotazioni")
+                             + " · " + root.shellAdapter.visibilityShortcut
+                    selected: !root.drawingAdapter.annotationsVisible
+                    onClicked: root.drawingAdapter.toggle_visibility()
+                }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        NeuButton {
-                            Layout.fillWidth: true
-                            text: "Annulla tratto"
-                            enabled: root.drawingAdapter.canUndo
-                            onClicked: root.drawingAdapter.undo()
-                        }
-                        ShortcutBadge { text: root.shellAdapter.undoShortcut }
-                    }
+                NeuIconButton {
+                    width: 44
+                    height: 44
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    iconSource: "../../../assets/icons/toolbar/undo.svg"
+                    toolTip: "Annulla · " + root.shellAdapter.undoShortcut
+                    enabled: root.drawingAdapter.canUndo
+                    onClicked: root.drawingAdapter.undo()
+                }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        NeuButton {
-                            Layout.fillWidth: true
-                            text: "Ripristina tratto"
-                            enabled: root.drawingAdapter.canRedo
-                            onClicked: root.drawingAdapter.redo()
-                        }
-                        ShortcutBadge { text: root.shellAdapter.redoShortcut }
-                    }
+                NeuIconButton {
+                    width: 44
+                    height: 44
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    iconSource: "../../../assets/icons/toolbar/redo.svg"
+                    toolTip: "Ripristina · " + root.shellAdapter.redoShortcut
+                    enabled: root.drawingAdapter.canRedo
+                    onClicked: root.drawingAdapter.redo()
+                }
+
+                NeuIconButton {
+                    width: 44
+                    height: 44
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    iconSource: "../../../assets/icons/toolbar/trash.svg"
+                    toolTip: "Cancella schermo · " + root.shellAdapter.clearShortcut
+                    onClicked: root.drawingAdapter.clear_screen()
                 }
             }
 
-            RaisedSurface {
-                Layout.fillWidth: true
-                Layout.leftMargin: 18
-                Layout.rightMargin: 18
-                Layout.preferredHeight: root.toolAdapter.colorAvailable ? 248 : 204
-                radius: Theme.radiusLarge
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 10
-
-                    Text {
-                        text: "STRUMENTI"
-                        color: Theme.textSecondary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 1.1
-                    }
-
-                    GridLayout {
-                        Layout.fillWidth: true
-                        columns: 3
-                        columnSpacing: 7
-                        rowSpacing: 7
-
-                        Repeater {
-                            model: root.toolModel
-                            delegate: NeuButton {
-                                required property string toolId
-                                required property string displayLabel
-                                required property string glyph
-                                required property bool supportsColor
-
-                                Layout.fillWidth: true
-                                compact: true
-                                text: glyph + "  " + displayLabel
-                                selected: root.toolAdapter.currentTool === toolId
-                                onClicked: root.toolAdapter.select_tool(toolId)
-                            }
-                        }
-                    }
-
-                    Text {
-                        visible: root.toolAdapter.colorAvailable
-                        text: "Colore"
-                        color: Theme.textSecondary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 10
-                    }
-
-                    RowLayout {
-                        visible: root.toolAdapter.colorAvailable
-                        Layout.fillWidth: true
-                        spacing: 7
-
-                        Repeater {
-                            model: root.colorPresets
-                            delegate: Button {
-                                id: swatch
-                                required property string modelData
-
-                                implicitWidth: 28
-                                implicitHeight: 28
-                                hoverEnabled: true
-                                focusPolicy: Qt.StrongFocus
-                                onClicked: root.toolAdapter.set_color(modelData)
-
-                                background: Rectangle {
-                                    radius: 14
-                                    color: swatch.modelData
-                                    border.width: root.toolAdapter.currentColor.toLowerCase()
-                                                  === swatch.modelData.toLowerCase() ? 2 : 1
-                                    border.color: root.toolAdapter.currentColor.toLowerCase()
-                                                  === swatch.modelData.toLowerCase()
-                                                  ? Theme.accent : Theme.textDim
-                                }
-                            }
-                        }
-
-                        Item { Layout.fillWidth: true }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-
-                        Text {
-                            text: "Dimensione"
-                            color: Theme.textSecondary
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 10
-                        }
-
-                        Slider {
-                            id: sizeSlider
-                            Layout.fillWidth: true
-                            from: 1
-                            to: 100
-                            stepSize: 1
-                            value: root.toolAdapter.currentSize
-                            focusPolicy: Qt.StrongFocus
-
-                            onPressedChanged: {
-                                if (!pressed)
-                                    root.toolAdapter.set_size(Math.round(value))
-                            }
-
-                            background: InsetSurface {
-                                x: sizeSlider.leftPadding
-                                y: sizeSlider.topPadding
-                                   + sizeSlider.availableHeight / 2 - height / 2
-                                width: sizeSlider.availableWidth
-                                height: 7
-                                radius: 3.5
-                                focused: sizeSlider.activeFocus
-                            }
-
-                            handle: Rectangle {
-                                x: sizeSlider.leftPadding
-                                   + sizeSlider.visualPosition
-                                   * (sizeSlider.availableWidth - width)
-                                y: sizeSlider.topPadding
-                                   + sizeSlider.availableHeight / 2 - height / 2
-                                width: 18
-                                height: 18
-                                radius: 9
-                                color: Theme.surface
-                                border.width: 2
-                                border.color: Theme.accent
-                            }
-                        }
-
-                        InsetSurface {
-                            Layout.preferredWidth: 44
-                            Layout.preferredHeight: 28
-                            radius: 9
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: Math.round(sizeSlider.value)
-                                color: Theme.textPrimary
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 11
-                            }
-                        }
-                    }
-                }
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Qt.rgba(1.0, 1.0, 1.0, 0.07)
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.leftMargin: 20
-                Layout.rightMargin: 20
-                Layout.bottomMargin: 18
-                spacing: 10
+            Item {
+                width: parent.width
+                height: 42
 
                 Text {
-                    Layout.fillWidth: true
-                    text: "Riduci il pannello per liberare l'area di lavoro"
+                    anchors.top: parent.top
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "SIZE"
                     color: Theme.textDim
                     font.family: Theme.fontFamily
-                    font.pixelSize: 10
-                    wrapMode: Text.WordWrap
+                    font.pixelSize: 8
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 0.8
                 }
 
-                NeuButton {
-                    text: "Riduci"
-                    compact: true
-                    Layout.preferredWidth: 84
-                    onClicked: root.shellAdapter.minimize_to_floating()
-                }
+                Slider {
+                    id: sizeSlider
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        bottom: parent.bottom
+                    }
+                    height: 26
+                    from: 1
+                    to: 100
+                    stepSize: 1
+                    value: root.toolAdapter.currentSize
+                    hoverEnabled: true
+                    focusPolicy: Qt.StrongFocus
 
-                ShortcutBadge { text: root.shellAdapter.minimizeShortcut }
+                    onPressedChanged: {
+                        if (!pressed)
+                            root.toolAdapter.set_size(Math.round(value))
+                    }
+
+                    background: InsetSurface {
+                        x: sizeSlider.leftPadding
+                        y: sizeSlider.topPadding
+                           + sizeSlider.availableHeight / 2 - height / 2
+                        width: sizeSlider.availableWidth
+                        height: 6
+                        radius: 3
+                        focused: sizeSlider.activeFocus
+                    }
+
+                    handle: Rectangle {
+                        x: sizeSlider.leftPadding
+                           + sizeSlider.visualPosition
+                           * (sizeSlider.availableWidth - width)
+                        y: sizeSlider.topPadding
+                           + sizeSlider.availableHeight / 2 - height / 2
+                        width: 14
+                        height: 14
+                        radius: 7
+                        color: Theme.surface
+                        border.width: 2
+                        border.color: Theme.accent
+                    }
+
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 350
+                    ToolTip.text: "Dimensione: " + Math.round(value)
+                }
+            }
+
+            Grid {
+                width: 60
+                height: 32
+                anchors.horizontalCenter: parent.horizontalCenter
+                columns: 4
+                spacing: 4
+                opacity: root.toolAdapter.colorAvailable ? 1.0 : 0.28
+
+                Repeater {
+                    model: root.colorPresets
+
+                    delegate: Button {
+                        id: swatch
+                        required property string modelData
+
+                        width: 12
+                        height: 12
+                        padding: 0
+                        hoverEnabled: true
+                        focusPolicy: Qt.StrongFocus
+                        enabled: root.toolAdapter.colorAvailable
+                        Accessible.name: "Colore " + modelData
+
+                        onClicked: root.toolAdapter.set_color(modelData)
+
+                        background: Rectangle {
+                            radius: 6
+                            color: swatch.modelData
+                            border.width: root.toolAdapter.currentColor.toLowerCase()
+                                          === swatch.modelData.toLowerCase()
+                                          || swatch.activeFocus ? 2 : 1
+                            border.color: root.toolAdapter.currentColor.toLowerCase()
+                                          === swatch.modelData.toLowerCase()
+                                          ? Theme.accent : Theme.textDim
+                        }
+
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 350
+                        ToolTip.text: modelData
+                    }
+                }
             }
         }
     }

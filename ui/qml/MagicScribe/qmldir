@@ -3,6 +3,7 @@ singleton Theme 1.0 Theme.qml
 RaisedSurface 1.0 RaisedSurface.qml
 InsetSurface 1.0 InsetSurface.qml
 NeuButton 1.0 NeuButton.qml
+NeuIconButton 1.0 NeuIconButton.qml
 ShortcutBadge 1.0 ShortcutBadge.qml
 StatusIndicator 1.0 StatusIndicator.qml
 FloatingPalette 1.0 FloatingPalette.qml
