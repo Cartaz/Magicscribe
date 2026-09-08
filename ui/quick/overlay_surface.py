@@ -18,6 +18,7 @@ from PySide6.QtQuick import QQuickWindow
 
 from ui.adapters.drawing_adapter import DrawingAdapter
 from ui.adapters.tool_adapter import ToolAdapter
+from ui.native.x11_input_shape import set_x11_click_through
 from ui.quick.drawing_canvas import DrawingCanvas
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,10 @@ def _create_eraser_cursor(size: int = 32) -> QCursor:
     finally:
         painter.end()
     return QCursor(pixmap, size // 2, size // 2)
+
+
+def _platform_name() -> str:
+    return QGuiApplication.platformName().lower()
 
 
 class OverlaySurface:
@@ -77,10 +82,13 @@ class OverlaySurface:
 
         self.refresh_geometry()
         self._sync_canvas_size()
-        self._sync_input_mode()
+        self._sync_cursor()
 
     def show(self) -> None:
         self.window.show()
+        # L'input region X11 richiede un native window id valido, quindi viene
+        # sincronizzata dopo show() e poi a ogni cambio dello stato drawing.
+        self._sync_input_mode()
 
     def shutdown(self) -> None:
         self.window.hide()
@@ -99,15 +107,33 @@ class OverlaySurface:
         self.canvas.setHeight(content.height())
 
     def _sync_input_mode(self) -> None:
-        """Rende la finestra output-only quando il disegno non e' attivo."""
+        """Alterna click-through e cattura input senza ricreare la window xcb."""
+        click_through = not self._drawing_adapter.active
+
+        # Sul runtime di migrazione reale (xcb/XWayland) cambiare
+        # WindowTransparentForInput a finestra Quick gia' visibile si e'
+        # dimostrato instabile. Usiamo quindi l'input shape X11, che modifica
+        # solo la regione di input del native window esistente.
+        if _platform_name() == "xcb":
+            if set_x11_click_through(int(self.window.winId()), click_through):
+                self._sync_cursor()
+                return
+            logger.warning(
+                "X11 input shape non disponibile; uso il fallback Qt per l'overlay"
+            )
+
+        self._set_qt_input_transparency(click_through)
+        self._sync_cursor()
+
+    def _set_qt_input_transparency(self, click_through: bool) -> None:
+        """Fallback portabile per piattaforme diverse da xcb."""
         was_visible = self.window.isVisible()
         self.window.setFlag(
             Qt.WindowType.WindowTransparentForInput,
-            not self._drawing_adapter.active,
+            click_through,
         )
         if was_visible and not self.window.isVisible():
             self.window.show()
-        self._sync_cursor()
 
     def _sync_cursor(self) -> None:
         if not self._drawing_adapter.active:
