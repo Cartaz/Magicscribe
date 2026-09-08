@@ -1,0 +1,16 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local virtual environment
+.venv/
+
+# Local editor / OS noise
+*.swp
+*~
+.DS_Store
