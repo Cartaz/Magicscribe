@@ -45,4 +45,6 @@ The floating palette intentionally uses `WindowDoesNotAcceptFocus` while this ga
 
 Production QML uses the dark-neumorphic tokens centralized in `ui/qml/MagicScribe/Theme.qml`: surface `#141414`, accent `#ff6600`, Noto Sans, radii `28 / 22 / 16 / 12`.
 
+The primary control shell is a compact frameless vertical toolbar placed on the left side by default. Clicking the MagicScribe icon reduces it to the small draggable `FloatingPalette`; clicking that palette restores the toolbar. Tool state, drawing state and configuration remain owned by Python and are only presented through the existing QML adapters.
+
 `config/theme.py`, `ui/styles/` and the QWidget modules are legacy-only and must not be imported by the production bootstrap.
