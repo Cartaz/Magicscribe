@@ -90,6 +90,40 @@ def _new_token(prefix: str) -> str:
     return f"magicscribe_{prefix}_{secrets.token_hex(8)}"
 
 
+def _create_session_options(handle_token: str, session_token: str) -> dict[str, str]:
+    """Build the GlobalShortcuts CreateSession vardict with scalar values.
+
+    A Python mapping passed as a QVariantMap is already marshalled by Qt as
+    ``a{sv}``. Wrapping the values in QDBusVariant here would create a nested
+    variant and the portal would see type ``v`` where the key contract expects
+    the contained string type ``s``.
+    """
+    return {
+        "handle_token": handle_token,
+        "session_handle_token": session_token,
+    }
+
+
+def _shortcut_payload(
+    shortcuts: tuple[ShortcutSpec, ...],
+) -> list[tuple[str, dict[str, str]]]:
+    """Build the ``a(sa{sv})`` shortcut payload using plain scalar values."""
+    return [
+        (
+            spec.shortcut_id,
+            {
+                "description": spec.description,
+                "preferred_trigger": spec.preferred_trigger,
+            },
+        )
+        for spec in shortcuts
+    ]
+
+
+def _request_options(handle_token: str) -> dict[str, str]:
+    return {"handle_token": handle_token}
+
+
 class PortalGlobalShortcutBackend(QObject):
     """Backend QtDBus asincrono per org.freedesktop.portal.GlobalShortcuts."""
 
@@ -163,10 +197,7 @@ class PortalGlobalShortcutBackend(QObject):
             self._finish(False, "Impossibile sottoscrivere la risposta CreateSession")
             return
 
-        options = {
-            "handle_token": QDBusVariant(handle_token),
-            "session_handle_token": QDBusVariant(session_token),
-        }
+        options = _create_session_options(handle_token, session_token)
         pending = self._portal.asyncCallWithArgumentList("CreateSession", [options])
         self._watch_method_reply(
             pending,
@@ -318,17 +349,8 @@ class PortalGlobalShortcutBackend(QObject):
             self._finish(False, "Impossibile sottoscrivere la risposta BindShortcuts")
             return
 
-        shortcut_payload = [
-            (
-                spec.shortcut_id,
-                {
-                    "description": QDBusVariant(spec.description),
-                    "preferred_trigger": QDBusVariant(spec.preferred_trigger),
-                },
-            )
-            for spec in self._shortcuts
-        ]
-        options = {"handle_token": QDBusVariant(handle_token)}
+        shortcut_payload = _shortcut_payload(self._shortcuts)
+        options = _request_options(handle_token)
         pending = portal.asyncCallWithArgumentList(
             "BindShortcuts",
             [
