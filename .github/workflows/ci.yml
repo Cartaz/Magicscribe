@@ -12,16 +12,20 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up Python 3.12
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install Qt runtime libraries
@@ -37,6 +41,7 @@ jobs:
       - name: Verify PySide6, Qt and D-Bus runtime
         run: |
           python - <<'PY'
+          import sys
           from PySide6.QtCore import qVersion
           from PySide6.QtQml import QQmlApplicationEngine
           from PySide6.QtWidgets import QApplication
@@ -47,7 +52,7 @@ jobs:
           assert QQmlApplicationEngine is not None
           assert QApplication is not None
           assert jeepney is not None
-          print(f"Qt {qVersion()} / PySide6 runtime OK (Jeepney D-Bus available)")
+          print(f"Python {sys.version.split()[0]} / Qt {qVersion()} / PySide6 runtime OK (Jeepney D-Bus available)")
           PY
 
       - name: Validate shell syntax
