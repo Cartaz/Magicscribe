@@ -46,7 +46,7 @@ class ToolAdapter(QObject):
         return self._controller.get_current_tool() != ToolType.ERASER
     colorAvailable = Property(bool, _get_color_available, notify=currentToolChanged)
 
-    @Slot(str, name="selectTool")
+    @Slot(str)
     def select_tool(self, tool_id: str) -> None:
         tool = _tool_from_id(tool_id)
         if tool is None:
@@ -54,7 +54,7 @@ class ToolAdapter(QObject):
             return
         self._controller.set_tool(tool)
 
-    @Slot(str, name="setColor")
+    @Slot(str)
     def set_color(self, color: str) -> None:
         tool = self._controller.get_current_tool()
         if tool == ToolType.ERASER:
@@ -65,7 +65,7 @@ class ToolAdapter(QObject):
             return
         self._controller.tool_manager.set_color(tool, color)
 
-    @Slot(float, name="setSize")
+    @Slot(float)
     def set_size(self, size: float) -> None:
         tool = self._controller.get_current_tool()
         setting_key = "eraser_size" if tool == ToolType.ERASER else f"{tool.name.lower()}_size"
