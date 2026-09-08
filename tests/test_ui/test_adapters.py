@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
 
 from config.settings import Settings
 from core.app_controller import AppController
@@ -12,7 +12,7 @@ from ui.adapters.drawing_adapter import DrawingAdapter
 from ui.adapters.tool_adapter import ToolAdapter
 from ui.models.tool_list_model import ToolListModel
 
-_APP = QCoreApplication.instance() or QCoreApplication([])
+_APP = QApplication.instance() or QApplication([])
 
 
 def _controller(tmp_path) -> AppController:
