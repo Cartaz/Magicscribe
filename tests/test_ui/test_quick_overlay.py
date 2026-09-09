@@ -184,7 +184,7 @@ def test_drawing_canvas_translates_global_desktop_coordinates(tmp_path) -> None:
     canvas._begin_stroke(QPointF(10, 10))
     canvas._finish_stroke(QPointF(20, 20))
 
-    stroke = controller.stroke_manager.strokes[0]
+    stroke = controller.stroke_manager.get_strokes()[0]
     assert stroke.points[0].x == -90
     assert stroke.points[0].y == 60
 
