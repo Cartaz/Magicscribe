@@ -26,7 +26,11 @@ class DrawingCanvas(QQuickPaintedItem):
         self._current_stroke: Stroke | None = None
         self._global_origin = QPointF(global_origin or QPointF())
 
-        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+        self.setAcceptedMouseButtons(
+            Qt.MouseButton.LeftButton
+            if adapter.active
+            else Qt.MouseButton.NoButton
+        )
         self.setAntialiasing(True)
         self.setOpaquePainting(False)
         self.setFillColor(QColor(0, 0, 0, 0))
@@ -126,7 +130,22 @@ class DrawingCanvas(QQuickPaintedItem):
         self.update()
 
     def _on_active_changed(self) -> None:
-        if not self._adapter.active and self._current_stroke is not None:
+        active = self._adapter.active
+        self.setAcceptedMouseButtons(
+            Qt.MouseButton.LeftButton if active else Qt.MouseButton.NoButton
+        )
+        if active:
+            return
+
+        # Accepting a mouse press gives a QQuickItem an exclusive pointer grab
+        # until release. If drawing is disabled while that grab is still alive,
+        # the wl_surface can already be click-through while Qt Quick keeps
+        # routing pointer events to this item. Release the grab explicitly before
+        # returning control to the desktop.
+        self.setKeepMouseGrab(False)
+        self.ungrabMouse()
+
+        if self._current_stroke is not None:
             self._current_stroke = None
             self.update()
 
