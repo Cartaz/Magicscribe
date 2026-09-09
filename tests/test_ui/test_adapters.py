@@ -51,6 +51,29 @@ def test_drawing_adapter_reflects_history_after_actions(tmp_path) -> None:
     event_bus.clear()
 
 
+def test_drawing_adapter_close_unsubscribes_owned_events(tmp_path) -> None:
+    event_bus.clear()
+    controller = _controller(tmp_path)
+    adapter = DrawingAdapter(controller)
+    active_changes = []
+    history_changes = []
+    adapter.activeChanged.connect(lambda: active_changes.append(True))
+    adapter.historyChanged.connect(lambda: history_changes.append(True))
+
+    adapter.close()
+    adapter.close()
+    controller.toggle_drawing()
+    controller.finalize_stroke(
+        Stroke(tool_type=ToolType.PEN, points=[Point(1, 2)])
+    )
+
+    assert adapter.active is True
+    assert adapter.strokeCount == 1
+    assert active_changes == []
+    assert history_changes == []
+    event_bus.clear()
+
+
 def test_qml_adapters_never_alias_slot_names() -> None:
     """PySide6 6.11.2/Python 3.14 can crash on QML -> @Slot(name=...)."""
     root = Path(__file__).resolve().parents[2]
@@ -119,6 +142,27 @@ def test_tool_adapter_uses_canonical_tool_manager(tmp_path) -> None:
 
     adapter.select_tool("eraser")
     assert adapter.colorAvailable is False
+    event_bus.clear()
+
+
+def test_tool_adapter_close_unsubscribes_owned_events(tmp_path) -> None:
+    event_bus.clear()
+    controller = _controller(tmp_path)
+    adapter = ToolAdapter(controller)
+    current_changes = []
+    config_changes = []
+    adapter.currentToolChanged.connect(lambda: current_changes.append(True))
+    adapter.configChanged.connect(lambda: config_changes.append(True))
+
+    adapter.close()
+    adapter.close()
+    controller.set_tool(ToolType.CIRCLE)
+    controller.tool_manager.set_size(ToolType.CIRCLE, 12)
+
+    assert adapter.currentTool == "circle"
+    assert adapter.currentSize == 12.0
+    assert current_changes == []
+    assert config_changes == []
     event_bus.clear()
 
 
