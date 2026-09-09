@@ -10,4 +10,4 @@ FloatingPalette 1.0 FloatingPalette.qml
 ControlPanel 1.0 ControlPanel.qml
 WaylandFloatingPalette 1.0 WaylandFloatingPalette.qml
 WaylandControlPanel 1.0 WaylandControlPanel.qml
-WaylandOverlayWindow 1.0 WaylandOverlayWindow.qml
+WaylandLayerSurface 1.0 WaylandLayerSurface.qml
