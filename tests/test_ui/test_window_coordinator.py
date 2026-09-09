@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, QSize
 
+import ui.native.window_coordinator as window_coordinator_module
 from ui.native.window_coordinator import _clamp_position_to_geometry
 
 
@@ -28,3 +29,23 @@ def test_clamp_pins_oversized_window_to_geometry_origin() -> None:
     size = QSize(104, 700)
 
     assert _clamp_position_to_geometry(QPoint(999, 999), size, geometry) == QPoint(100, 50)
+
+
+def test_native_wayland_delegates_top_level_positioning_to_compositor(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        window_coordinator_module,
+        "_platform_name",
+        lambda: "wayland",
+    )
+    assert window_coordinator_module._supports_absolute_top_level_positioning() is False
+
+
+def test_xcb_keeps_absolute_top_level_positioning(monkeypatch) -> None:
+    monkeypatch.setattr(
+        window_coordinator_module,
+        "_platform_name",
+        lambda: "xcb",
+    )
+    assert window_coordinator_module._supports_absolute_top_level_positioning() is True
