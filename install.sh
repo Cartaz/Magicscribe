@@ -17,6 +17,7 @@ DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 DESKTOP_FILE="${DATA_HOME}/applications/${APP_NAME}.desktop"
 ICON_THEME_DIR="${DATA_HOME}/icons/hicolor"
 VENV_DIR="${SCRIPT_DIR}/.venv"
+LAYER_SHELL_QML_ROOT=""
 
 echo "=== MagicScribe — Installazione locale ==="
 
@@ -65,8 +66,8 @@ echo "[2/7] Installazione dipendenze riproducibili..."
     --quiet
 echo "     Dipendenze release installate dai pin verificati."
 
-# 3. Verifica runtime Qt/PySide6 + D-Bus + Wayland nativo
-echo "[3/7] Verifica runtime PySide6/Qt, D-Bus e Wayland nativo..."
+# 3. Verifica runtime Qt/PySide6 + D-Bus + Wayland/layer-shell
+echo "[3/7] Verifica runtime PySide6/Qt, D-Bus e KDE layer-shell..."
 "${VENV_DIR}/bin/python" - <<'PY'
 import ctypes.util
 from pathlib import Path
@@ -103,24 +104,61 @@ if missing_native:
         + ", ".join(missing_native)
     )
 
-# xcb/X11 resta soltanto un rollback diagnostico durante il gate di migrazione.
-xcb_plugin = platforms_dir / "libqxcb.so"
-x11_fallback = (
-    xcb_plugin.is_file()
-    and ctypes.util.find_library("X11") is not None
-    and ctypes.util.find_library("Xext") is not None
-)
-
 print(
     f"     PySide6/Qt {qVersion()} OK "
     f"(Jeepney, Wayland QPA={len(wayland_plugins)}, wayland-client, xkbcommon)"
 )
-print(
-    "     Rollback xcb/X11: " + ("disponibile" if x11_fallback else "non disponibile")
-)
 PY
 
-# 4. Verifica modulo QML
+if ! command -v qtpaths6 >/dev/null 2>&1; then
+    echo "ERRORE: qtpaths6 non trovato; necessario per verificare l'ABI di layer-shell-qt." >&2
+    exit 1
+fi
+
+PYSIDE_QT_VERSION="$("${VENV_DIR}/bin/python" - <<'PY'
+from PySide6.QtCore import qVersion
+print(qVersion())
+PY
+)"
+SYSTEM_QT_VERSION="$(qtpaths6 --qt-version)"
+if [[ "${PYSIDE_QT_VERSION}" != "${SYSTEM_QT_VERSION}" ]]; then
+    echo "ERRORE: Qt PySide6=${PYSIDE_QT_VERSION}, Qt sistema=${SYSTEM_QT_VERSION}." >&2
+    echo "layer-shell-qt usa API private QtWayland: le versioni devono coincidere." >&2
+    exit 1
+fi
+
+LAYER_SHELL_QML_ROOT="$(
+    PYTHONPATH="${SCRIPT_DIR}" "${VENV_DIR}/bin/python" - <<'PY'
+from ui.native.layer_shell import find_layer_shell_qml_root
+root = find_layer_shell_qml_root()
+if root is None:
+    raise SystemExit(
+        "Modulo org.kde.layershell non trovato; su CachyOS/Arch installare layer-shell-qt"
+    )
+print(root)
+PY
+)"
+echo "     layer-shell-qt QML: ${LAYER_SHELL_QML_ROOT} (ABI Qt ${SYSTEM_QT_VERSION})"
+
+# xcb/X11 resta soltanto un rollback diagnostico durante il gate di migrazione.
+if "${VENV_DIR}/bin/python" - <<'PY' >/dev/null 2>&1
+import ctypes.util
+from pathlib import Path
+from PySide6.QtCore import QLibraryInfo
+plugins = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)) / "platforms"
+raise SystemExit(0 if (
+    (plugins / "libqxcb.so").is_file()
+    and ctypes.util.find_library("X11") is not None
+    and ctypes.util.find_library("Xext") is not None
+) else 1)
+PY
+then
+    echo "     Rollback xcb/X11: disponibile"
+else
+    echo "     Rollback xcb/X11: non disponibile"
+fi
+
+# 4. Verifica modulo QML, incluso il boundary KDE di sistema
 echo "[4/7] Verifica sorgenti QML..."
 if [ ! -x "${VENV_DIR}/bin/pyside6-qmllint" ]; then
     echo "ERRORE: pyside6-qmllint non disponibile nell'ambiente virtuale." >&2
@@ -129,8 +167,9 @@ fi
 "${VENV_DIR}/bin/pyside6-qmllint" \
     --max-warnings 0 \
     -I "${SCRIPT_DIR}/ui/qml" \
+    -I "${LAYER_SHELL_QML_ROOT}" \
     "${SCRIPT_DIR}"/ui/qml/MagicScribe/*.qml
-echo "     Modulo QML valido e senza warning."
+echo "     Modulo QML + layer-shell valido e senza warning."
 
 # 5. Directory di configurazione
 echo "[5/7] Creazione directory di configurazione..."
@@ -176,14 +215,10 @@ if "=" in value:
 encoded = []
 for char in value:
     if char == "\\":
-        # Exec escaping + general string escaping: una backslash letterale
-        # richiede quattro backslash nel file desktop.
         encoded.append("\\\\\\\\")
     elif char in {'"', "`", "$"}:
-        # Il quoting Exec richiede una backslash; il livello string la raddoppia.
         encoded.append("\\\\" + char)
     elif char == "%":
-        # '%' introduce i field code Exec; '%%' rappresenta il carattere letterale.
         encoded.append("%%")
     else:
         encoded.append(char)
