@@ -110,7 +110,11 @@ print(
 )
 PY
 
-if ! command -v qtpaths6 >/dev/null 2>&1; then
+QT_PATHS6="$(command -v qtpaths6 || true)"
+if [[ -z "${QT_PATHS6}" && -x /usr/lib/qt6/bin/qtpaths6 ]]; then
+    QT_PATHS6="/usr/lib/qt6/bin/qtpaths6"
+fi
+if [[ -z "${QT_PATHS6}" ]]; then
     echo "ERRORE: qtpaths6 non trovato; necessario per verificare l'ABI di layer-shell-qt." >&2
     exit 1
 fi
@@ -120,7 +124,7 @@ from PySide6.QtCore import qVersion
 print(qVersion())
 PY
 )"
-SYSTEM_QT_VERSION="$(qtpaths6 --qt-version)"
+SYSTEM_QT_VERSION="$("${QT_PATHS6}" --qt-version)"
 if [[ "${PYSIDE_QT_VERSION}" != "${SYSTEM_QT_VERSION}" ]]; then
     echo "ERRORE: Qt PySide6=${PYSIDE_QT_VERSION}, Qt sistema=${SYSTEM_QT_VERSION}." >&2
     echo "layer-shell-qt usa API private QtWayland: le versioni devono coincidere." >&2
