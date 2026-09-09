@@ -1,4 +1,4 @@
-"""Static guardrails for the local KDE desktop parity harness."""
+"""Static guardrails for the local KDE native-Wayland parity harness."""
 
 from pathlib import Path
 
@@ -13,10 +13,15 @@ def test_local_desktop_gate_captures_required_evidence() -> None:
     assert "Pss_Anon" in source
     assert "Global shortcuts registrate tramite XDG Desktop Portal" in source
     assert "Global shortcuts non attive:" in source
-    assert "Piattaforma Qt: xcb" in source
-    assert "xrandr --listmonitors" in source
+    assert "Piattaforma Qt effettiva: wayland" in source
+    assert "Backend Wayland nativo attivo" in source
+    assert "Overlay avviato: backend=wayland, superfici=${EXPECTED_SCREENS}" in source
+    assert "kscreen-doctor -o" in source
+    assert "QT_QPA_PLATFORM=wayland" in source
+    assert "env -u QT_QPA_PLATFORM" in source
     assert HotkeyDefaults.QUIT_APP in source
     assert "after_20_additional_strokes" in source
+    assert "issue #24" in source
 
 
 def test_local_desktop_gate_uses_run_scoped_logs() -> None:
