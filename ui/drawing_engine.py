@@ -1,18 +1,21 @@
 """Motore di rendering dei tratti di disegno.
 
-Responsabile della resa grafica dei tratti su un QPainter. Questo modulo vive
-in ui/ perche' importa PySide6; il livello core rimane framework-agnostic.
+Responsabile della resa grafica dei tratti su un QPainter,
+gestendo i diversi tipi di strumento supportati dal runtime.
+
+Questo modulo risiede in ui/ perche' importa PySide6; il livello core
+rimane framework-agnostic.
 """
 
 from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
+from PySide6.QtCore import Qt, QPointF, QRectF
+from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QPainterPath
 
 from core.geometry import rdp_simplify
-from core.models import Point, Stroke, ToolType
+from core.models import Stroke, ToolType, Point
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +45,11 @@ def _qcolor(color_str: str) -> QColor:
 
 
 class DrawingEngine:
-    """Motore di rendering per i tratti di disegno supportati dal runtime."""
+    """Motore di rendering per i tratti di disegno."""
 
     @staticmethod
     def render_stroke(painter: QPainter, stroke: Stroke) -> None:
+        """Renderizza un singolo tratto su un QPainter."""
         if not stroke.points:
             return
         painter.save()
@@ -64,6 +68,7 @@ class DrawingEngine:
 
     @staticmethod
     def render_strokes(painter: QPainter, strokes: list[Stroke]) -> None:
+        """Renderizza una lista di tratti in ordine."""
         for stroke in strokes:
             DrawingEngine.render_stroke(painter, stroke)
 
@@ -71,11 +76,8 @@ class DrawingEngine:
     def _render_freehand(painter: QPainter, stroke: Stroke) -> None:
         color = _qcolor(stroke.color)
         pen = QPen(
-            QBrush(color),
-            stroke.size,
-            Qt.PenStyle.SolidLine,
-            Qt.PenCapStyle.RoundCap,
-            Qt.PenJoinStyle.RoundJoin,
+            QBrush(color), stroke.size, Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin,
         )
         painter.setCompositionMode(_SO)
         painter.setPen(pen)
@@ -89,11 +91,8 @@ class DrawingEngine:
     def _render_smooth(painter: QPainter, stroke: Stroke) -> None:
         color = _qcolor(stroke.color)
         pen = QPen(
-            QBrush(color),
-            stroke.size,
-            Qt.PenStyle.SolidLine,
-            Qt.PenCapStyle.RoundCap,
-            Qt.PenJoinStyle.RoundJoin,
+            QBrush(color), stroke.size, Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin,
         )
         painter.setCompositionMode(_SO)
         painter.setPen(pen)
@@ -102,12 +101,12 @@ class DrawingEngine:
 
     @staticmethod
     def _render_eraser(painter: QPainter, stroke: Stroke) -> None:
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        painter.setCompositionMode(
+            QPainter.CompositionMode.CompositionMode_Clear
+        )
         pen = QPen(
-            QBrush(QColor(0, 0, 0, 0)),
-            stroke.size,
-            Qt.PenStyle.SolidLine,
-            Qt.PenCapStyle.RoundCap,
+            QBrush(QColor(0, 0, 0, 0)), stroke.size,
+            Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
             Qt.PenJoinStyle.RoundJoin,
         )
         painter.setPen(pen)
@@ -124,9 +123,7 @@ class DrawingEngine:
         color = _qcolor(stroke.color)
         painter.setCompositionMode(_SO)
         painter.setPen(QPen(
-            QBrush(color),
-            stroke.size,
-            Qt.PenStyle.SolidLine,
+            QBrush(color), stroke.size, Qt.PenStyle.SolidLine,
             Qt.PenCapStyle.RoundCap,
         ))
         p1, p2 = stroke.points[0], stroke.points[-1]
@@ -142,8 +139,7 @@ class DrawingEngine:
         painter.setBrush(Qt.BrushStyle.NoBrush)
         p1, p2 = stroke.points[0], stroke.points[-1]
         painter.drawRect(QRectF(
-            QPointF(p1.x, p1.y),
-            QPointF(p2.x, p2.y),
+            QPointF(p1.x, p1.y), QPointF(p2.x, p2.y),
         ).normalized())
 
     @staticmethod
@@ -156,30 +152,28 @@ class DrawingEngine:
         painter.setBrush(Qt.BrushStyle.NoBrush)
         p1, p2 = stroke.points[0], stroke.points[-1]
         painter.drawEllipse(QRectF(
-            QPointF(p1.x, p1.y),
-            QPointF(p2.x, p2.y),
+            QPointF(p1.x, p1.y), QPointF(p2.x, p2.y),
         ).normalized())
 
     @staticmethod
     def _smooth_path(
-        points: list[Point],
-        tolerance: float = 10.0,
+        points: list[Point], tolerance: float = 10.0,
     ) -> QPainterPath:
         path = QPainterPath()
         if not points:
             return path
         if len(points) < 3:
             path.moveTo(points[0].x, points[0].y)
-            for point in points[1:]:
-                path.lineTo(point.x, point.y)
+            for p in points[1:]:
+                path.lineTo(p.x, p.y)
             return path
         simplified = rdp_simplify(points, tolerance)
         if not simplified:
             return path
         path.moveTo(simplified[0].x, simplified[0].y)
-        for index in range(1, len(simplified) - 1):
-            xc = (simplified[index].x + simplified[index + 1].x) / 2
-            yc = (simplified[index].y + simplified[index + 1].y) / 2
-            path.quadTo(simplified[index].x, simplified[index].y, xc, yc)
+        for i in range(1, len(simplified) - 1):
+            xc = (simplified[i].x + simplified[i + 1].x) / 2
+            yc = (simplified[i].y + simplified[i + 1].y) / 2
+            path.quadTo(simplified[i].x, simplified[i].y, xc, yc)
         path.lineTo(simplified[-1].x, simplified[-1].y)
         return path
