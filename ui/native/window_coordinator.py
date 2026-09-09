@@ -46,12 +46,12 @@ def _clamp_position_to_geometry(
 
 
 class WindowCoordinator:
-    """Possiede visibilita', placement e z-order della shell QML.
+    """Possiede visibilita' e lifecycle della shell QML.
 
-    Su X11/offscreen conserva il placement esplicito e il reclamp multi-monitor.
-    Su Wayland nativo delega il placement iniziale a KWin/XDG Shell e mantiene
-    soltanto visibilita', focus e stacking. Lo spostamento manuale continua a
-    passare da QWindow.startSystemMove() nel QML, cioe' dal compositor.
+    Su X11/offscreen mantiene placement, reclamp, raise e activation espliciti.
+    Su Wayland nativo non emula quelle operazioni: layer-shell possiede stacking,
+    anchors, margins e keyboard interactivity; il QML aggiorna direttamente i
+    margini durante il drag.
     """
 
     _CONTROL_MARGIN = 20
@@ -70,7 +70,7 @@ class WindowCoordinator:
             self._bind_screen_signals()
         else:
             logger.info(
-                "Wayland nativo: placement toolbar/palette delegato al compositor"
+                "Wayland nativo: placement e stacking shell delegati a layer-shell"
             )
 
     def set_control_window(self, window: QWindow) -> None:
@@ -111,8 +111,9 @@ class WindowCoordinator:
             window.setPosition(target_pos)
 
         window.show()
-        window.raise_()
-        window.requestActivate()
+        if self._absolute_positioning:
+            window.raise_()
+            window.requestActivate()
 
     def minimize_to_floating(self) -> None:
         control = self._control_window
@@ -137,7 +138,8 @@ class WindowCoordinator:
             floating.setPosition(target_pos)
 
         floating.show()
-        floating.raise_()
+        if self._absolute_positioning:
+            floating.raise_()
         logger.info("Pannello QML ridotto a floating palette")
 
     def restore_control_panel(self) -> None:
@@ -149,6 +151,11 @@ class WindowCoordinator:
         return floating is not None and floating.isVisible()
 
     def ensure_z_order(self) -> None:
+        if not self._absolute_positioning:
+            # Le layer-surface hanno un ordine definito dal protocollo, non da
+            # raise_/activation delle normali finestre Qt.
+            return
+
         control = self._control_window
         if control is not None and control.isVisible():
             control.raise_()
