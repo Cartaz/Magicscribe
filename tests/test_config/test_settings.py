@@ -67,7 +67,6 @@ def test_invalid_values_are_ignored_on_load(tmp_path: Path) -> None:
     path.write_text(
         json.dumps({
             "pen_size": "enorme",
-            "overlay_opacity": -4,
             "show_control_on_start": 1,
             "last_tool": "laser",
             "pen_color": "not-a-color",
@@ -79,7 +78,6 @@ def test_invalid_values_are_ignored_on_load(tmp_path: Path) -> None:
     settings.load()
 
     assert settings.get("pen_size") == 5
-    assert settings.get("overlay_opacity") == 0.75
     assert settings.get("show_control_on_start") is True
     assert settings.get("last_tool") == "pen"
     assert settings.get("pen_color") == "#ff0000"
@@ -124,12 +122,13 @@ def test_validation_has_no_side_effects(tmp_path: Path) -> None:
     assert settings.get("pen_size") == 5
 
 
-def test_obsolete_hotkey_keys_are_ignored(tmp_path: Path) -> None:
+def test_obsolete_settings_are_ignored(tmp_path: Path) -> None:
     path = tmp_path / "test_settings.json"
     path.write_text(
         json.dumps({
             "hotkey_toggle": "F10",
             "hotkey_visibility": "Ctrl+F10",
+            "overlay_opacity": 0.25,
             "pen_size": 11,
         }),
         encoding="utf-8",
@@ -140,7 +139,9 @@ def test_obsolete_hotkey_keys_are_ignored(tmp_path: Path) -> None:
     assert settings.get("pen_size") == 11
     assert settings.get("hotkey_toggle") is None
     assert settings.get("hotkey_visibility") is None
+    assert settings.get("overlay_opacity") is None
     assert "hotkey_toggle" not in settings.all()
+    assert "overlay_opacity" not in settings.all()
 
 
 def test_background_persistence_flushes_on_close(tmp_path: Path) -> None:
