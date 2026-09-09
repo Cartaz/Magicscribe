@@ -61,10 +61,13 @@ echo "[2/7] Installazione dipendenze..."
 "${VENV_DIR}/bin/python" -m pip install -r "${SCRIPT_DIR}/requirements.txt" --quiet
 echo "     Dipendenze installate."
 
-# 3. Verifica runtime Qt/PySide6 + D-Bus
-echo "[3/7] Verifica runtime PySide6/Qt e D-Bus..."
+# 3. Verifica runtime Qt/PySide6 + D-Bus + prerequisiti xcb/X11
+echo "[3/7] Verifica runtime PySide6/Qt, D-Bus e xcb/X11..."
 "${VENV_DIR}/bin/python" - <<'PY'
-from PySide6.QtCore import qVersion
+import ctypes.util
+from pathlib import Path
+
+from PySide6.QtCore import QLibraryInfo, qVersion
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
 import jeepney
@@ -76,7 +79,28 @@ if version < (6, 11, 0):
 assert QQmlApplicationEngine is not None
 assert QApplication is not None
 assert jeepney is not None
-print(f"     PySide6/Qt {qVersion()} OK (Jeepney D-Bus disponibile)")
+
+plugins_root = Path(
+    QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)
+)
+xcb_plugin = plugins_root / "platforms" / "libqxcb.so"
+if not xcb_plugin.is_file():
+    raise SystemExit(f"Plugin Qt xcb non trovato: {xcb_plugin}")
+
+missing_native = [
+    name for name in ("X11", "Xext")
+    if ctypes.util.find_library(name) is None
+]
+if missing_native:
+    raise SystemExit(
+        "Librerie native richieste dal runtime xcb mancanti: "
+        + ", ".join(missing_native)
+    )
+
+print(
+    f"     PySide6/Qt {qVersion()} OK "
+    "(Jeepney D-Bus, Qt xcb, X11 e Xext disponibili)"
+)
 PY
 
 # 4. Verifica modulo QML
@@ -122,6 +146,20 @@ echo "     Icone installate nel tema hicolor."
 echo "[7/7] Creazione file .desktop..."
 mkdir -p "$(dirname "${DESKTOP_FILE}")"
 
+desktop_exec_quote() {
+    "${VENV_DIR}/bin/python" - "$1" <<'PY'
+import sys
+
+value = sys.argv[1]
+for char in ("\\", '"', "`", "$"):
+    value = value.replace(char, "\\" + char)
+sys.stdout.write(f'"{value}"')
+PY
+}
+
+EXEC_PYTHON="$(desktop_exec_quote "${VENV_DIR}/bin/python")"
+EXEC_MAIN="$(desktop_exec_quote "${SCRIPT_DIR}/main.py")"
+
 cat > "${DESKTOP_FILE}" << EOF
 [Desktop Entry]
 Type=Application
@@ -131,7 +169,7 @@ Name[it]=MagicScribe
 Comment=On-screen annotation tool
 Comment[it]=Strumento di annotazione sullo schermo
 Icon=magicscribe
-Exec=${VENV_DIR}/bin/python ${SCRIPT_DIR}/main.py
+Exec=${EXEC_PYTHON} ${EXEC_MAIN}
 Terminal=false
 Categories=Graphics;Utility;
 Keywords=annotation;drawing;screenshot;presentation;
