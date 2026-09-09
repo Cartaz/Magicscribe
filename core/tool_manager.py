@@ -1,23 +1,19 @@
-"""Gestore degli strumenti di disegno e loro configurazione.
-
-Fornisce le definizioni degli strumenti disponibili, gestisce
-lo strumento corrente e le configurazioni colore/dimensione.
-"""
+"""Gestore degli strumenti di disegno e loro configurazione."""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import replace
 
-from core.models import ToolType, ToolConfig
-from core.event_bus import event_bus
 from config.settings import Settings
+from core.event_bus import event_bus
+from core.models import ToolConfig, ToolType
 
 logger = logging.getLogger(__name__)
 
 
 def _parse_tool_type(value: object) -> ToolType:
-    """Converte un valore (stringa/ToolType) in ToolType con fallback PEN."""
+    """Converte un valore in ToolType con fallback PEN."""
     if isinstance(value, ToolType):
         return value
     if isinstance(value, str):
@@ -37,17 +33,14 @@ def _parse_tool_type(value: object) -> ToolType:
 
 
 class ToolManager:
-    """Gestisce gli strumenti di disegno e le loro configurazioni."""
+    """Possiede lo strumento corrente e le configurazioni colore/dimensione."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._current_tool: ToolType = _parse_tool_type(
-            settings.get("last_tool")
-        )
-        self._configs: dict[ToolType, ToolConfig] = self._build_configs()
+        self._current_tool = _parse_tool_type(settings.get("last_tool"))
+        self._configs = self._build_configs()
 
     def _build_configs(self) -> dict[ToolType, ToolConfig]:
-        """Costruisce le configurazioni degli strumenti dalle impostazioni."""
         return {
             ToolType.PEN: ToolConfig(
                 tool_type=ToolType.PEN,
@@ -72,7 +65,6 @@ class ToolManager:
                 tool_type=ToolType.CIRCLE,
                 color=self._settings.get("circle_color"),
                 size=self._settings.get("circle_size"),
-                fill_color=None,
             ),
             ToolType.SMOOTH: ToolConfig(
                 tool_type=ToolType.SMOOTH,
@@ -82,19 +74,15 @@ class ToolManager:
         }
 
     def current_tool(self) -> ToolType:
-        """Restituisce lo strumento correntemente selezionato."""
         return self._current_tool
 
     def current_config(self) -> ToolConfig:
-        """Restituisce la configurazione dello strumento corrente."""
         return self._configs[self._current_tool]
 
     def config_for(self, tool_type: ToolType) -> ToolConfig:
-        """Restituisce la configurazione di uno strumento specifico."""
         return self._configs[tool_type]
 
     def set_tool(self, tool_type: ToolType) -> None:
-        """Seleziona uno strumento come attivo."""
         if tool_type == self._current_tool:
             return
         if not self._settings.set("last_tool", tool_type.name.lower()):
@@ -106,7 +94,6 @@ class ToolManager:
         event_bus.emit("tool_changed", old_tool=old, new_tool=tool_type)
 
     def set_color(self, tool_type: ToolType, color: str) -> None:
-        """Imposta il colore validato di uno strumento."""
         if tool_type == ToolType.ERASER:
             logger.debug("set_color ignorato per ERASER (nessun colore)")
             return
@@ -120,12 +107,12 @@ class ToolManager:
         if self._configs[tool_type].color == normalized:
             return
         self._configs[tool_type] = replace(
-            self._configs[tool_type], color=normalized,
+            self._configs[tool_type],
+            color=normalized,
         )
         event_bus.emit("tool_config_changed", tool_type=tool_type)
 
     def set_size(self, tool_type: ToolType, size: float) -> None:
-        """Imposta la dimensione validata di uno strumento."""
         setting_key = (
             "eraser_size"
             if tool_type == ToolType.ERASER
@@ -139,10 +126,10 @@ class ToolManager:
         if float(self._configs[tool_type].size) == normalized:
             return
         self._configs[tool_type] = replace(
-            self._configs[tool_type], size=normalized,
+            self._configs[tool_type],
+            size=normalized,
         )
         event_bus.emit("tool_config_changed", tool_type=tool_type)
 
     def all_tools(self) -> list[ToolType]:
-        """Restituisce la lista di tutti gli strumenti disponibili."""
         return list(ToolType)
