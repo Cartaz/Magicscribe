@@ -18,9 +18,16 @@ ApplicationWindow {
         "#00bfa5", "#e040fb", "#ffffff", "#6b7076"
     ]
     readonly property real preferredHeight: 700
-    readonly property real safeDesktopHeight: Screen.desktopAvailableHeight > 0
-                                              ? Screen.desktopAvailableHeight
-                                              : preferredHeight + 40
+    readonly property real currentScreenHeight: Screen.height > 0
+                                                ? Screen.height
+                                                : preferredHeight + 40
+    readonly property real desktopAvailableHeight: Screen.desktopAvailableHeight > 0
+                                                    ? Screen.desktopAvailableHeight
+                                                    : currentScreenHeight
+    readonly property real safeDesktopHeight: Math.min(
+                                                  currentScreenHeight,
+                                                  desktopAvailableHeight
+                                              )
 
     visible: false
     width: 104
