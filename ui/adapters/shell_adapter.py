@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import QObject, QPoint, Property, Signal, Slot
+from PySide6.QtGui import QCursor
 
 from config.constants import HotkeyDefaults
 from ui.native.global_shortcuts import GlobalShortcutService
@@ -60,6 +61,11 @@ class ShellAdapter(QObject):
     def globalDrawingShortcutsActive(self) -> bool:
         service = self._global_shortcuts
         return service is not None and service.active
+
+    @Slot(result=QPoint)
+    def global_cursor_position(self) -> QPoint:
+        """Restituisce l'ultima posizione globale del puntatore nota a Qt."""
+        return QCursor.pos()
 
     @Slot()
     def minimize_to_floating(self) -> None:
