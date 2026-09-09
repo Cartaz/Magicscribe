@@ -5,6 +5,7 @@ FloatingPalette {
     id: root
 
     layerShellPlacement: true
+    flags: Qt.FramelessWindowHint
 
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop
                                | LayerShell.Window.AnchorLeft
