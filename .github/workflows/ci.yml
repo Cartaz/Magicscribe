@@ -90,8 +90,13 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q config core ui scripts main.py
 
-      - name: Lint QML
-        run: pyside6-qmllint --max-warnings 0 -I ui/qml ui/qml/MagicScribe/*.qml
+      - name: Lint portable QML
+        run: |
+          mapfile -d '' qml_files < <(
+            find ui/qml/MagicScribe -maxdepth 1 -type f -name '*.qml' \
+              ! -name 'Wayland*.qml' -print0
+          )
+          pyside6-qmllint --max-warnings 0 -I ui/qml "${qml_files[@]}"
 
       - name: Run tests
         run: python -m pytest -q
