@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QImage, QPainter
+from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
 
 from config.settings import Settings
@@ -122,6 +123,20 @@ def test_native_wayland_builds_one_overlay_per_screen(
     event_bus.clear()
     _controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
     monkeypatch.setattr(overlay_surface_module, "_platform_name", lambda: "wayland")
+
+    class _FakeLayerShellComponent:
+        @staticmethod
+        def create():
+            return QQuickWindow()
+
+        @staticmethod
+        def errors():
+            return []
+
+    def _fake_prepare(surface: OverlaySurface) -> None:
+        surface._wayland_component = _FakeLayerShellComponent()
+
+    monkeypatch.setattr(OverlaySurface, "_prepare_wayland_component", _fake_prepare)
 
     surface = OverlaySurface(drawing_adapter, tool_adapter)
     try:
