@@ -80,7 +80,8 @@ def test_pure_geometry_lives_in_core_and_dead_event_bridge_is_removed() -> None:
     assert not (root / "ui" / "geometry_utils.py").exists()
     assert not (root / "ui" / "event_bridge.py").exists()
     drawing_engine = (root / "ui" / "drawing_engine.py").read_text(encoding="utf-8")
-    assert "from core.geometry import rdp_simplify" in drawing_engine
+    assert "ui.geometry_utils" not in drawing_engine
+    assert "from core.models import" in drawing_engine
 
 
 def test_neu_button_pressed_state_does_not_toggle_effect_layers() -> None:
