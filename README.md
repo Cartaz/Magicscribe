@@ -21,30 +21,28 @@ python -m pytest -q
 bash -n install.sh scripts/local_desktop_gate.sh
 ```
 
-## Local desktop parity gate
+## Local desktop parity harness
 
-The remaining KDE/KWin parity checks are intentionally interactive. On the target CachyOS desktop run:
+The KDE/KWin parity harness remains available for regression checks on the target CachyOS desktop:
 
 ```bash
 bash scripts/local_desktop_gate.sh
 ```
 
-The harness records session/portal information, per-run application logs, Linux PSS from `/proc/<pid>/smaps_rollup`, global/local shortcut behavior, overlay/floating-window observations and lifecycle results under `~/.local/state/magicscribe/desktop-gate-<timestamp>/`.
+It records session/portal information, per-run application logs, Linux PSS from `/proc/<pid>/smaps_rollup`, global/local shortcut behavior, overlay/floating-window observations and lifecycle results under `~/.local/state/magicscribe/desktop-gate-<timestamp>/`.
 
-A zero exit status means the interactive report contains no FAIL or SKIP entries. Exit code `2` means at least one check failed; exit code `3` means the gate is incomplete because at least one check was skipped. Review the generated report before closing issue #6.
+The migration gate tracked in GitHub issue #6 was completed on the target desktop after review of a run with no failures. The harness intentionally reports a non-zero result when checks are skipped, so future reports must still be interpreted in context when a check is genuinely not applicable, such as multi-monitor geometry on a single-monitor system.
 
-## Deliberate migration gate
+## Platform policy
 
-The production shell is Qt Quick, but native KDE parity is not yet considered demonstrated. On Wayland `main.py` currently forces Qt `xcb`/XWayland. The old QWidget/X11 implementation remains in-tree only as a parity reference.
+The production shell and overlay are Qt Quick only; the historical QWidget shell/overlay and its QSS theme have been removed.
 
-Do not remove it until GitHub issue #6 is completed on CachyOS/KDE/KWin. The gate covers global shortcuts, click-through, z-order, floating drag, cursors, multi-monitor geometry and Linux PSS from `/proc/<pid>/smaps_rollup`.
+On a Wayland session `main.py` still forces Qt `xcb`/XWayland until native-Wayland parity is demonstrated separately. `ui/native/x11_input_shape.py` therefore remains part of the production runtime: it owns the X11 Shape input-region handling needed for reliable click-through under the current xcb/XWayland policy and is not a legacy QWidget fallback.
 
-The floating palette intentionally uses `WindowDoesNotAcceptFocus` while this gate is open so it does not steal focus from the application being annotated. Keyboard/focus behavior must be evaluated in the same desktop parity pass.
+The floating palette intentionally uses `WindowDoesNotAcceptFocus` so it does not steal focus from the application being annotated.
 
 ## Visual system
 
 Production QML uses the dark-neumorphic tokens centralized in `ui/qml/MagicScribe/Theme.qml`: surface `#141414`, accent `#ff6600`, Noto Sans, radii `28 / 22 / 16 / 12`.
 
 The primary control shell is a compact frameless vertical toolbar placed on the left side by default. Clicking the MagicScribe icon reduces it to the small draggable `FloatingPalette`; clicking that palette restores the toolbar. Tool state, drawing state and configuration remain owned by Python and are only presented through the existing QML adapters.
-
-`config/theme.py`, `ui/styles/` and the QWidget modules are legacy-only and must not be imported by the production bootstrap.
