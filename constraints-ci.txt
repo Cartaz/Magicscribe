@@ -1,0 +1,3 @@
+# CI extends the exact runtime release constraints with dev-only tools.
+-c constraints-release.txt
+pytest==8.4.2
