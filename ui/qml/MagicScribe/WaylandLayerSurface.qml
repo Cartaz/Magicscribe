@@ -8,8 +8,6 @@ Window {
     color: "transparent"
     title: "MagicScribe Overlay"
     flags: Qt.FramelessWindowHint
-           | Qt.Tool
-           | Qt.WindowDoesNotAcceptFocus
 
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop
                                | LayerShell.Window.AnchorBottom
