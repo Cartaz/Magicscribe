@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QPainterPath
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
 
-from core.models import Stroke, ToolType, Point
+from core.models import Point, Stroke, ToolType
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def _qcolor(color_str: str) -> QColor:
                 a = int(float(parts[3]) * 255)
                 return QColor(r, g, b, a)
             except (ValueError, TypeError):
-                logger.warning("Colore rgba malformato: %r", color_str)
+                logger.warning("Colore rgba malformato: %r, uso nero", color_str)
                 return QColor("#000000")
     color = QColor(color_str)
     if not color.isValid():
@@ -95,8 +95,19 @@ class DrawingEngine:
         )
         painter.setCompositionMode(_SO)
         painter.setPen(pen)
-        path = DrawingEngine._smooth_path(stroke.points)
+
+        filtered = DrawingEngine._smooth_points(stroke.points)
+        path = DrawingEngine._smooth_path_from_filtered(filtered)
         painter.drawPath(path)
+
+        # Il corpo del tratto e' append-stable. Solo la mezza coda finale e'
+        # provvisoria, cosi' il cursore resta collegato senza poter deformare
+        # segmenti ormai consolidati quando arrivano nuovi campioni.
+        if len(filtered) >= 2:
+            tail = QPainterPath(path.currentPosition())
+            last = filtered[-1]
+            tail.quadTo(last.x, last.y, last.x, last.y)
+            painter.drawPath(tail)
 
     @staticmethod
     def _render_eraser(painter: QPainter, stroke: Stroke) -> None:
@@ -155,14 +166,46 @@ class DrawingEngine:
         ).normalized())
 
     @staticmethod
-    def _smooth_path(points: list[Point]) -> QPainterPath:
-        """Costruisce un tratto smussato causale e append-stable.
+    def _smooth_points(points: list[Point]) -> list[Point]:
+        """Filtra causalmente i campioni senza modificare quelli gia' prodotti."""
+        if not points:
+            return []
+        if len(points) == 1:
+            return [points[0]]
 
-        Ogni vertice filtrato dipende soltanto dal campione corrente e dai due
-        precedenti. Aggiungere nuovi punti non puo' quindi cambiare alcuna parte
-        del path gia' renderizzata, evitando il movimento retroattivo prodotto
-        dalla precedente semplificazione RDP dell'intero tratto.
+        filtered = [
+            points[0],
+            Point(
+                0.30 * points[0].x + 0.70 * points[1].x,
+                0.30 * points[0].y + 0.70 * points[1].y,
+            ),
+        ]
+        for index in range(2, len(points)):
+            older = points[index - 2]
+            previous = points[index - 1]
+            current = points[index]
+            filtered.append(
+                Point(
+                    0.15 * older.x + 0.30 * previous.x + 0.55 * current.x,
+                    0.15 * older.y + 0.30 * previous.y + 0.55 * current.y,
+                )
+            )
+        return filtered
+
+    @staticmethod
+    def _smooth_path(points: list[Point]) -> QPainterPath:
+        """Costruisce il corpo consolidato di un tratto Smooth.
+
+        I punti vengono filtrati causalmente e poi collegati con curve
+        quadratiche tra i midpoint consecutivi. L'aggiunta di nuovi campioni
+        appende nuovi segmenti senza cambiare quelli gia' consolidati.
         """
+        return DrawingEngine._smooth_path_from_filtered(
+            DrawingEngine._smooth_points(points)
+        )
+
+    @staticmethod
+    def _smooth_path_from_filtered(points: list[Point]) -> QPainterPath:
         path = QPainterPath()
         if not points:
             return path
@@ -171,20 +214,19 @@ class DrawingEngine:
         if len(points) == 1:
             return path
 
-        previous = points[0]
-        current = points[1]
-        path.lineTo(
-            0.30 * previous.x + 0.70 * current.x,
-            0.30 * previous.y + 0.70 * current.y,
+        first_mid = QPointF(
+            (points[0].x + points[1].x) / 2,
+            (points[0].y + points[1].y) / 2,
         )
+        path.lineTo(first_mid)
 
-        for index in range(2, len(points)):
-            older = points[index - 2]
-            previous = points[index - 1]
+        for index in range(1, len(points) - 1):
             current = points[index]
-            path.lineTo(
-                0.15 * older.x + 0.30 * previous.x + 0.55 * current.x,
-                0.15 * older.y + 0.30 * previous.y + 0.55 * current.y,
+            following = points[index + 1]
+            next_mid = QPointF(
+                (current.x + following.x) / 2,
+                (current.y + following.y) / 2,
             )
+            path.quadTo(current.x, current.y, next_mid.x(), next_mid.y())
 
         return path
