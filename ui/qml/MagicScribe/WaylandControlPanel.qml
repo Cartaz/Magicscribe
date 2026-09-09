@@ -25,11 +25,10 @@ ControlPanel {
         root.layerShellMarginTop = Math.max(0, Math.min(maxTop, top))
     }
 
-    // The generic DragHandler receives positions in window-local coordinates.
-    // Moving a layer-surface by changing its margins changes those coordinates
-    // underneath the active gesture, which can create a positive feedback jump.
-    // This Wayland-only handle reconstructs the pointer in desktop coordinates
-    // as current layer margin + local position before calculating the new margin.
+    // MouseArea exposes only window-local x/y. Updating layer-shell margins while
+    // using those coordinates feeds the compositor move back into the gesture.
+    // QtWayland already tracks QMouseEvent.globalPosition() in QCursor::pos(), so
+    // use only global pointer coordinates for the duration of the drag.
     Item {
         id: waylandLogoDragHandle
         x: Math.round((root.width - width) / 2)
@@ -39,7 +38,6 @@ ControlPanel {
         z: 1000
 
         MouseArea {
-            id: waylandLogoMouse
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton
             preventStealing: true
@@ -47,30 +45,26 @@ ControlPanel {
 
             property real pressMarginLeft: 0
             property real pressMarginTop: 0
-            property real pressDesktopX: 0
-            property real pressDesktopY: 0
+            property real pressGlobalX: 0
+            property real pressGlobalY: 0
             property bool moved: false
 
-            onPressed: (mouse) => {
+            onPressed: {
+                const cursor = root.shellAdapter.global_cursor_position()
                 pressMarginLeft = root.layerShellMarginLeft
                 pressMarginTop = root.layerShellMarginTop
-                pressDesktopX = root.layerShellMarginLeft
-                                + waylandLogoDragHandle.x + mouse.x
-                pressDesktopY = root.layerShellMarginTop
-                                + waylandLogoDragHandle.y + mouse.y
+                pressGlobalX = cursor.x
+                pressGlobalY = cursor.y
                 moved = false
             }
 
-            onPositionChanged: (mouse) => {
+            onPositionChanged: {
                 if (!pressed)
                     return
 
-                const currentDesktopX = root.layerShellMarginLeft
-                                      + waylandLogoDragHandle.x + mouse.x
-                const currentDesktopY = root.layerShellMarginTop
-                                      + waylandLogoDragHandle.y + mouse.y
-                const dx = currentDesktopX - pressDesktopX
-                const dy = currentDesktopY - pressDesktopY
+                const cursor = root.shellAdapter.global_cursor_position()
+                const dx = cursor.x - pressGlobalX
+                const dy = cursor.y - pressGlobalY
 
                 if (!moved && Math.abs(dx) < 4 && Math.abs(dy) < 4)
                     return
