@@ -27,6 +27,10 @@ def test_wayland_overlay_uses_top_layer_without_keyboard_focus() -> None:
     assert "LayerShell.Window.AnchorLeft" in source
     assert "LayerShell.Window.AnchorRight" in source
     assert 'LayerShell.Window.scope: "magicscribe-overlay"' in source
+    assert "flags: Qt.FramelessWindowHint" in source
+    assert "Qt.Tool" not in source
+    assert "WindowStaysOnTopHint" not in source
+    assert "WindowDoesNotAcceptFocus" not in source
 
 
 def test_wayland_shell_windows_are_above_overlay() -> None:
@@ -37,6 +41,9 @@ def test_wayland_shell_windows_are_above_overlay() -> None:
         assert "LayerShell.Window.LayerOverlay" in source
         assert "LayerShell.Window.margins" in source
         assert "layerShellPlacement: true" in source
+        assert "flags: Qt.FramelessWindowHint" in source
+        assert "WindowStaysOnTopHint" not in source
+        assert "Qt.Tool" not in source
 
     assert "KeyboardInteractivityOnDemand" in control
     assert "KeyboardInteractivityNone" in floating
