@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QPoint, Property, Signal, Slot
-from PySide6.QtGui import QCursor
+from PySide6.QtCore import QObject, QPoint, Property, QRect, QTimer, Signal, Slot
+from PySide6.QtGui import QCursor, QRegion
 
 from config.constants import HotkeyDefaults
 from ui.native.global_shortcuts import GlobalShortcutService
@@ -66,6 +66,36 @@ class ShellAdapter(QObject):
     def global_cursor_position(self) -> QPoint:
         """Restituisce l'ultima posizione globale del puntatore nota a Qt."""
         return QCursor.pos()
+
+    @Slot(float, float, float, float)
+    def set_control_input_region(
+        self,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+    ) -> None:
+        """Limita l'input della control surface fullscreen al pannello visibile."""
+        region = QRegion(
+            QRect(
+                round(x),
+                round(y),
+                max(1, round(width)),
+                max(1, round(height)),
+            )
+        )
+
+        def apply_region() -> None:
+            # ShellAdapter e WindowCoordinator costituiscono lo stesso boundary UI;
+            # la finestra viene associata subito dopo la creazione QML.
+            window = self._coordinator._control_window
+            if window is not None:
+                window.setMask(region)
+
+        apply_region()
+        # QWindow::setMask prima della creazione native non ha effetto; ripetiamo
+        # nel prossimo giro dell'event loop per coprire il primo show().
+        QTimer.singleShot(0, apply_region)
 
     @Slot()
     def minimize_to_floating(self) -> None:
