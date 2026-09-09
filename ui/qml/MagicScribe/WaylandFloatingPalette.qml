@@ -13,10 +13,8 @@ FloatingPalette {
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
     LayerShell.Window.scope: "magicscribe-floating"
-    LayerShell.Window.margins: ({
-        left: Math.round(root.layerShellMarginLeft),
-        top: Math.round(root.layerShellMarginTop),
-        right: 0,
-        bottom: 0
-    })
+    LayerShell.Window.margins.left: Math.round(root.layerShellMarginLeft)
+    LayerShell.Window.margins.top: Math.round(root.layerShellMarginTop)
+    LayerShell.Window.margins.right: 0
+    LayerShell.Window.margins.bottom: 0
 }
