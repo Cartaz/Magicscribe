@@ -153,6 +153,8 @@ import sys
 value = sys.argv[1]
 if any(ord(char) < 32 or ord(char) == 127 for char in value):
     raise SystemExit("Percorso con caratteri di controllo non supportato nel file .desktop")
+if "=" in value:
+    raise SystemExit("Percorso contenente '=' non supportato dall'Exec del file .desktop")
 
 encoded = []
 for char in value:
@@ -191,6 +193,10 @@ Categories=Graphics;Utility;
 Keywords=annotation;drawing;screenshot;presentation;
 StartupWMClass=MagicScribe
 EOF
+
+if command -v desktop-file-validate >/dev/null 2>&1; then
+    desktop-file-validate "${DESKTOP_FILE}"
+fi
 
 echo "     File .desktop creato in ${DESKTOP_FILE}"
 update-desktop-database "$(dirname "${DESKTOP_FILE}")" 2>/dev/null || true
