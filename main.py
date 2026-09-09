@@ -15,14 +15,15 @@ import os
 from pathlib import Path
 import sys
 
-# Manteniamo temporaneamente XWayland finche' la parita' desktop/Wayland non
-# viene verificata separatamente. Deve precedere qualsiasi import PySide6.
-_is_wayland = (
+# Su una sessione Wayland usiamo esplicitamente il QPA nativo. Un override
+# manuale (es. QT_QPA_PLATFORM=xcb) resta disponibile come rollback diagnostico
+# finche' il gate KDE/KWin della migrazione non e' completato.
+_is_wayland_session = (
     os.environ.get("XDG_SESSION_TYPE") == "wayland"
     or bool(os.environ.get("WAYLAND_DISPLAY"))
 )
-if _is_wayland and not os.environ.get("QT_QPA_PLATFORM"):
-    os.environ["QT_QPA_PLATFORM"] = "xcb"
+if _is_wayland_session and not os.environ.get("QT_QPA_PLATFORM"):
+    os.environ["QT_QPA_PLATFORM"] = "wayland"
 
 from PySide6.QtCore import QTimer, QSize
 from PySide6.QtGui import QIcon, QWindow
@@ -96,7 +97,7 @@ def _set_application_icon(app: QApplication, app_dir: Path) -> None:
 
 
 def _portal_parent_window(window: QWindow) -> str:
-    """Restituisce il parent_window XDG per il backend Qt attuale."""
+    """Restituisce il parent_window XDG quando Qt espone un X11 XID."""
     if QApplication.platformName().lower() != "xcb":
         return ""
     xid = int(window.winId())
@@ -138,11 +139,6 @@ def main() -> None:
     _setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Avvio %s v%s", AppMeta.NAME, AppMeta.VERSION)
-    logger.info(
-        "Piattaforma Qt: %s (sessione: %s)",
-        os.environ.get("QT_QPA_PLATFORM", "auto"),
-        os.environ.get("XDG_SESSION_TYPE", "sconosciuto"),
-    )
 
     instance_guard = SingleInstanceGuard()
     if not instance_guard.acquire():
@@ -159,6 +155,21 @@ def main() -> None:
         app.setApplicationDisplayName(AppMeta.DISPLAY_NAME)
         app.setDesktopFileName(AppMeta.ORG_NAME)
         app.setQuitOnLastWindowClosed(True)
+
+        platform_name = QApplication.platformName().lower()
+        logger.info(
+            "Piattaforma Qt effettiva: %s (sessione: %s, override: %s)",
+            platform_name,
+            os.environ.get("XDG_SESSION_TYPE", "sconosciuto"),
+            os.environ.get("QT_QPA_PLATFORM", "auto"),
+        )
+        if _is_wayland_session and platform_name.startswith("wayland"):
+            logger.info("Backend Wayland nativo attivo")
+        elif _is_wayland_session:
+            logger.warning(
+                "Sessione Wayland con backend Qt non nativo: %s",
+                platform_name,
+            )
 
         app_dir = Path(__file__).resolve().parent
         _set_application_icon(app, app_dir)
@@ -181,12 +192,16 @@ def main() -> None:
 
         overlay_surface = OverlaySurface(drawing_adapter, tool_adapter)
         overlay_surface.show()
-        window_coordinator = WindowCoordinator(overlay_surface.window)
+        window_coordinator = WindowCoordinator()
         global_shortcuts = GlobalShortcutService(controller)
         shell_adapter = ShellAdapter(window_coordinator, global_shortcuts)
 
+        def ensure_window_order() -> None:
+            overlay_surface.ensure_z_order()
+            window_coordinator.ensure_z_order()
+
         drawing_adapter.activeChanged.connect(
-            lambda: QTimer.singleShot(50, window_coordinator.ensure_z_order)
+            lambda: QTimer.singleShot(50, ensure_window_order)
         )
 
         exit_code = 1
@@ -223,7 +238,7 @@ def main() -> None:
             if settings.get("show_control_on_start"):
                 window_coordinator.show_control_panel()
 
-            QTimer.singleShot(200, window_coordinator.ensure_z_order)
+            QTimer.singleShot(200, ensure_window_order)
 
             logger.info("Applicazione avviata con shell e overlay Qt Quick")
             exit_code = app.exec()
