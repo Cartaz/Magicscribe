@@ -36,7 +36,7 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
 
     QQuickWindow.setDefaultAlphaBuffer(True)
     overlay_surface = OverlaySurface(drawing_adapter, tool_adapter)
-    coordinator = WindowCoordinator(overlay_surface.window)
+    coordinator = WindowCoordinator()
     shell_adapter = ShellAdapter(coordinator)
 
     engine = QQmlApplicationEngine()
@@ -109,6 +109,8 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
         coordinator.set_floating_window(floating_window)
 
         coordinator.show_control_panel()
+        overlay_surface.ensure_z_order()
+        coordinator.ensure_z_order()
         _APP.processEvents()
         assert overlay_surface.window.isVisible() is True
         assert control_window.isVisible() is True
@@ -132,7 +134,8 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
             floating_object.deleteLater()
         coordinator.shutdown()
         overlay_surface.shutdown()
-        overlay_surface.window.deleteLater()
+        for overlay_window in overlay_surface.windows:
+            overlay_window.deleteLater()
         floating_component.deleteLater()
         engine.deleteLater()
         drawing_adapter.close()
