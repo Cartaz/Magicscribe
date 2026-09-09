@@ -35,16 +35,19 @@ def test_smooth_path_prefix_is_stable_when_points_are_appended() -> None:
     before = _elements(DrawingEngine._smooth_path(base))
     after = _elements(DrawingEngine._smooth_path(extended))
 
-    assert len(before) == len(base)
-    assert len(after) == len(extended)
+    # Quadratic segments are represented by more path elements than the raw
+    # polyline. This guards against Smooth silently regressing to Pen behavior.
+    assert len(before) > len(base)
     assert len(after) > len(before)
 
+    # Extending the stroke may append geometry, but must never rewrite the
+    # already consolidated body of the line.
     for old_element, new_element in zip(before, after):
         assert new_element[0] == pytest.approx(old_element[0])
         assert new_element[1] == pytest.approx(old_element[1])
 
 
-def test_smooth_path_filters_local_pointer_jitter() -> None:
+def test_smooth_filter_softens_local_pointer_jitter() -> None:
     points = [
         Point(0, 0),
         Point(10, 0),
@@ -52,9 +55,24 @@ def test_smooth_path_filters_local_pointer_jitter() -> None:
         Point(30, 0),
     ]
 
-    elements = _elements(DrawingEngine._smooth_path(points))
+    filtered = DrawingEngine._smooth_points(points)
 
-    # The third raw sample has y=12; the causal three-sample filter must soften
-    # that spike without requiring any future samples.
-    assert elements[2][1] < 12
-    assert elements[2][1] > 0
+    # The third raw sample has y=12; the causal filter must soften that spike
+    # without requiring any future samples.
+    assert filtered[2].y < 12
+    assert filtered[2].y > 0
+
+
+def test_smooth_path_rounds_a_deliberate_corner() -> None:
+    points = [
+        Point(0, 0),
+        Point(40, 0),
+        Point(40, 40),
+        Point(80, 40),
+    ]
+
+    path = DrawingEngine._smooth_path(points)
+
+    # A polyline with four points would have exactly four path elements.
+    # The extra elements prove that the corner is represented by a curve.
+    assert path.elementCount() > len(points)
