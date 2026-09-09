@@ -28,9 +28,19 @@ class DrawingAdapter(QObject):
     def __init__(self, controller: AppController, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
+        self._closed = False
         event_bus.subscribe("drawing_toggled", self._on_drawing_toggled)
         event_bus.subscribe("visibility_toggled", self._on_visibility_toggled)
         event_bus.subscribe("strokes_changed", self._on_history_changed)
+
+    def close(self) -> None:
+        """Rimuove in modo idempotente le subscription possedute dall'adapter."""
+        if self._closed:
+            return
+        self._closed = True
+        event_bus.unsubscribe("drawing_toggled", self._on_drawing_toggled)
+        event_bus.unsubscribe("visibility_toggled", self._on_visibility_toggled)
+        event_bus.unsubscribe("strokes_changed", self._on_history_changed)
 
     def _get_active(self) -> bool:
         return self._controller.is_drawing_active()
