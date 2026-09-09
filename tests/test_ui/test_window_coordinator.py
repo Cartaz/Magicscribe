@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint, QRect, QSize
 
 import ui.native.window_coordinator as window_coordinator_module
-from ui.native.window_coordinator import _clamp_position_to_geometry
+from ui.native.window_coordinator import WindowCoordinator, _clamp_position_to_geometry
 
 
 def test_clamp_keeps_window_inside_positive_geometry() -> None:
@@ -49,3 +49,26 @@ def test_xcb_keeps_absolute_top_level_positioning(monkeypatch) -> None:
         lambda: "xcb",
     )
     assert window_coordinator_module._supports_absolute_top_level_positioning() is True
+
+
+def test_native_wayland_does_not_fight_layer_shell_z_order(monkeypatch) -> None:
+    monkeypatch.setattr(
+        window_coordinator_module,
+        "_platform_name",
+        lambda: "wayland",
+    )
+    coordinator = WindowCoordinator()
+
+    class _VisibleWindow:
+        def isVisible(self) -> bool:
+            return True
+
+        def raise_(self) -> None:
+            raise AssertionError("raise_ must not be used for a layer-surface")
+
+        def requestActivate(self) -> None:
+            raise AssertionError("requestActivate must not be used for layer stacking")
+
+    coordinator._control_window = _VisibleWindow()
+    coordinator._floating_window = _VisibleWindow()
+    coordinator.ensure_z_order()
