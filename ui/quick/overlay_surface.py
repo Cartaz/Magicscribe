@@ -180,12 +180,12 @@ class OverlaySurface:
                 "Overlay Wayland nativo richiede il QQmlEngine condiviso della shell"
             )
         component = QQmlComponent(engine)
-        component.loadFromModule("MagicScribe", "WaylandOverlayWindow")
+        component.loadFromModule("MagicScribe", "WaylandLayerSurface")
         if not component.isReady():
             errors = "; ".join(error.toString() for error in component.errors())
             component.deleteLater()
             raise RuntimeError(
-                "Impossibile caricare WaylandOverlayWindow/layer-shell: " + errors
+                "Impossibile caricare WaylandLayerSurface/layer-shell: " + errors
             )
         self._wayland_component = component
 
@@ -208,7 +208,7 @@ class OverlaySurface:
                     obj.deleteLater()
                 errors = "; ".join(error.toString() for error in component.errors())
                 raise RuntimeError(
-                    "WaylandOverlayWindow non ha creato un QQuickWindow: " + errors
+                    "WaylandLayerSurface non ha creato un QQuickWindow: " + errors
                 )
             window = obj
         else:
