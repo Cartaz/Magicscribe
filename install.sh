@@ -163,10 +163,14 @@ if "=" in value:
 encoded = []
 for char in value:
     if char == "\\":
+        # Exec escaping + general string escaping: una backslash letterale
+        # richiede quattro backslash nel file desktop.
         encoded.append("\\\\\\\\")
     elif char in {'"', "`", "$"}:
+        # Il quoting Exec richiede una backslash; il livello string la raddoppia.
         encoded.append("\\\\" + char)
     elif char == "%":
+        # '%' introduce i field code Exec; '%%' rappresenta il carattere letterale.
         encoded.append("%%")
     else:
         encoded.append(char)
