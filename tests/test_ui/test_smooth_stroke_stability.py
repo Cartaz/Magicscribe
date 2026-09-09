@@ -35,8 +35,8 @@ def test_smooth_path_prefix_is_stable_when_points_are_appended() -> None:
     before = _elements(DrawingEngine._smooth_path(base))
     after = _elements(DrawingEngine._smooth_path(extended))
 
-    # Quadratic segments are represented by more path elements than the raw
-    # polyline. This guards against Smooth silently regressing to Pen behavior.
+    # Cubic segments are represented by substantially more path elements than
+    # the raw polyline. This guards against Smooth regressing to Pen behavior.
     assert len(before) > len(base)
     assert len(after) > len(before)
 
@@ -57,7 +57,7 @@ def test_smooth_filter_softens_local_pointer_jitter() -> None:
 
     filtered = DrawingEngine._smooth_points(points)
 
-    # The third raw sample has y=12; the causal filter must soften that spike
+    # The third raw sample has y=12; the causal low-pass must soften that spike
     # without requiring any future samples.
     assert filtered[2].y < 12
     assert filtered[2].y > 0
@@ -74,5 +74,25 @@ def test_smooth_path_rounds_a_deliberate_corner() -> None:
     path = DrawingEngine._smooth_path(points)
 
     # A polyline with four points would have exactly four path elements.
-    # The extra elements prove that the corner is represented by a curve.
+    # Cubic B-spline geometry must have additional control elements.
     assert path.elementCount() > len(points)
+
+
+def test_smooth_path_turns_zigzag_into_a_sinuous_curve() -> None:
+    points = [
+        Point(0, 0),
+        Point(20, 40),
+        Point(40, 0),
+        Point(60, 40),
+        Point(80, 0),
+        Point(100, 40),
+        Point(120, 0),
+    ]
+
+    path = DrawingEngine._smooth_path(points)
+    bounds = path.boundingRect()
+
+    # Pen follows the full 40 px zig-zag amplitude. Smooth must visibly cut the
+    # peaks instead of merely rounding the joins while preserving the zig-zag.
+    assert bounds.height() < 28
+    assert bounds.height() > 8
