@@ -31,7 +31,6 @@ _DEFAULTS: dict[str, Any] = {
     "circle_size": ToolDefaults.CIRCLE_SIZE,
     "smooth_color": ToolDefaults.SMOOTH_COLOR,
     "smooth_size": ToolDefaults.SMOOTH_SIZE,
-    "overlay_opacity": ToolDefaults.OVERLAY_OPACITY,
     "show_control_on_start": True,
     "last_tool": "pen",
 }
@@ -90,15 +89,6 @@ def _normalize_value(key: str, value: Any) -> tuple[bool, Any]:
             and 1 <= float(value) <= 100
         ):
             return True, int(value)
-        return False, value
-
-    if key == "overlay_opacity":
-        if (
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and 0.0 <= float(value) <= 1.0
-        ):
-            return True, float(value)
         return False, value
 
     if key == "show_control_on_start":
