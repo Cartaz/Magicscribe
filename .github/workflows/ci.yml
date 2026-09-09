@@ -31,7 +31,13 @@ jobs:
       - name: Install Qt runtime libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libx11-6 libxext6
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libwayland-client0 \
+            libxkbcommon0 \
+            libx11-6 \
+            libxext6
 
       - name: Verify release constraints
         run: python scripts/verify_release_constraints.py
@@ -44,11 +50,14 @@ jobs:
             -r requirements-dev.txt \
             -c constraints-ci.txt
 
-      - name: Verify PySide6, Qt and D-Bus runtime
+      - name: Verify PySide6, Qt, Wayland and D-Bus runtime
         run: |
           python - <<'PY'
+          import ctypes.util
           import sys
-          from PySide6.QtCore import qVersion
+          from pathlib import Path
+
+          from PySide6.QtCore import QLibraryInfo, qVersion
           from PySide6.QtQml import QQmlApplicationEngine
           from PySide6.QtWidgets import QApplication
           import jeepney
@@ -58,7 +67,21 @@ jobs:
           assert QQmlApplicationEngine is not None
           assert QApplication is not None
           assert jeepney is not None
-          print(f"Python {sys.version.split()[0]} / Qt {qVersion()} / PySide6 runtime OK (Jeepney D-Bus available)")
+
+          plugins_root = Path(
+              QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)
+          )
+          wayland_plugins = sorted(
+              (plugins_root / "platforms").glob("libqwayland*.so")
+          )
+          assert wayland_plugins, plugins_root / "platforms"
+          assert ctypes.util.find_library("wayland-client") is not None
+          assert ctypes.util.find_library("xkbcommon") is not None
+
+          print(
+              f"Python {sys.version.split()[0]} / Qt {qVersion()} / "
+              f"Wayland QPA {len(wayland_plugins)} plugin(s) / Jeepney OK"
+          )
           PY
 
       - name: Validate shell syntax
