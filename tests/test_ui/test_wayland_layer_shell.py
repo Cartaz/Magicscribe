@@ -18,7 +18,7 @@ def _source(name: str) -> str:
 
 
 def test_wayland_overlay_uses_top_layer_without_keyboard_focus() -> None:
-    source = _source("WaylandOverlayWindow.qml")
+    source = _source("WaylandLayerSurface.qml")
     assert "import org.kde.layershell 1.0 as LayerShell" in source
     assert "LayerShell.Window.LayerTop" in source
     assert "LayerShell.Window.KeyboardInteractivityNone" in source
@@ -55,6 +55,6 @@ def test_layer_shell_drag_uses_margins_not_system_move() -> None:
 
 def test_qmldir_exports_wayland_components() -> None:
     qmldir = (QML_DIR / "qmldir").read_text(encoding="utf-8")
-    assert "WaylandOverlayWindow 1.0 WaylandOverlayWindow.qml" in qmldir
+    assert "WaylandLayerSurface 1.0 WaylandLayerSurface.qml" in qmldir
     assert "WaylandControlPanel 1.0 WaylandControlPanel.qml" in qmldir
     assert "WaylandFloatingPalette 1.0 WaylandFloatingPalette.qml" in qmldir
