@@ -31,7 +31,7 @@ jobs:
       - name: Install Qt runtime libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1
+          sudo apt-get install -y libegl1 libgl1 libx11-6 libxext6
 
       - name: Install dependencies
         run: |
@@ -66,3 +66,6 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+      - name: Observe renderer performance
+        run: python scripts/benchmark_renderer.py --quick

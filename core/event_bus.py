@@ -1,12 +1,11 @@
 """Event bus centrale per la comunicazione tra moduli.
 
-Implementa il pattern Observer con eventi tipizzati.
-I moduli si iscrivono a eventi per nome e ricevono callback
-quando l'evento viene emesso.
+Implementa il pattern Observer con eventi tipizzati. I moduli si iscrivono a
+eventi per nome e ricevono callback quando l'evento viene emesso.
 
-Nota: questo modulo NON importa mai Qt (§5.1.4b). Per la
-comunicazione thread-safe verso il livello UI, usare
-ui/event_bridge.py che marshalla le chiamate sul thread Qt.
+Questo modulo non importa Qt. Gli handler vengono eseguiti nel thread
+dell'emittente: chi attraversa un confine di thread deve quindi fare il
+marshalling nel servizio/adattatore che possiede quel confine.
 """
 
 from __future__ import annotations
@@ -22,11 +21,12 @@ EventHandler = Callable[..., None]
 
 
 class EventBus:
-    """Canale di comunicazione asincrona tra moduli.
+    """Canale di comunicazione sincrona tra moduli.
 
-    Gli handler vengono eseguiti sincronamente nel thread
-    dell'emittente. Operazioni lunghe devono essere delegate
-    a worker thread.
+    Gli handler vengono eseguiti sincronamente nel thread dell'emittente.
+    Operazioni lunghe devono essere delegate a worker thread e le subscription
+    possedute da oggetti con lifecycle esplicito devono essere rimosse al
+    teardown.
 
     Attributes:
         _handlers: mappa nome_evento -> lista di handler.

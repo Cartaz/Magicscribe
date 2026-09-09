@@ -27,8 +27,17 @@ class ToolAdapter(QObject):
     def __init__(self, controller: AppController, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
+        self._closed = False
         event_bus.subscribe("tool_changed", self._on_tool_changed)
         event_bus.subscribe("tool_config_changed", self._on_tool_config_changed)
+
+    def close(self) -> None:
+        """Rimuove in modo idempotente le subscription possedute dall'adapter."""
+        if self._closed:
+            return
+        self._closed = True
+        event_bus.unsubscribe("tool_changed", self._on_tool_changed)
+        event_bus.unsubscribe("tool_config_changed", self._on_tool_config_changed)
 
     def _get_current_tool(self) -> str:
         return self._controller.get_current_tool().name.lower()

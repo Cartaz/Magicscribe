@@ -13,6 +13,7 @@ from PySide6.QtGui import (
     QPainter,
     QPen,
     QPixmap,
+    QScreen,
 )
 from PySide6.QtQuick import QQuickWindow
 
@@ -48,7 +49,7 @@ class OverlaySurface:
 
     Non possiede stato di dominio: deriva interattivita' e cursore dagli
     adapter, mentre il canvas inoltra le gesture al controller tramite il
-    DrawingAdapter.
+    DrawingAdapter. La geometria segue dinamicamente il desktop virtuale.
     """
 
     def __init__(
@@ -59,6 +60,8 @@ class OverlaySurface:
         self._drawing_adapter = drawing_adapter
         self._tool_adapter = tool_adapter
         self._eraser_cursor = _create_eraser_cursor()
+        self._screen_signals_connected = False
+        self._bound_screens: list[QScreen] = []
 
         self.window = QQuickWindow()
         self.window.setObjectName("overlayWindow")
@@ -80,6 +83,7 @@ class OverlaySurface:
         drawing_adapter.activeChanged.connect(self._sync_input_mode)
         tool_adapter.currentToolChanged.connect(self._sync_cursor)
 
+        self._bind_screen_signals()
         self.refresh_geometry()
         self._sync_canvas_size()
         self._sync_cursor()
@@ -91,6 +95,7 @@ class OverlaySurface:
         self._sync_input_mode()
 
     def shutdown(self) -> None:
+        self._unbind_screen_signals()
         self.window.hide()
 
     def refresh_geometry(self) -> None:
@@ -100,6 +105,55 @@ class OverlaySurface:
             logger.warning("Nessuno schermo primario disponibile per l'overlay Quick")
             return
         self.window.setGeometry(screen.virtualGeometry())
+
+    def _bind_screen_signals(self) -> None:
+        app = QGuiApplication.instance()
+        if app is not None and not self._screen_signals_connected:
+            app.screenAdded.connect(self._on_screen_topology_changed)
+            app.screenRemoved.connect(self._on_screen_topology_changed)
+            app.primaryScreenChanged.connect(self._on_screen_topology_changed)
+            self._screen_signals_connected = True
+        self._rebind_screen_geometry_signals()
+
+    def _rebind_screen_geometry_signals(self) -> None:
+        self._disconnect_screen_geometry_signals()
+        self._bound_screens = list(QGuiApplication.screens())
+        for screen in self._bound_screens:
+            screen.geometryChanged.connect(self._on_screen_geometry_changed)
+            screen.virtualGeometryChanged.connect(self._on_screen_geometry_changed)
+
+    def _disconnect_screen_geometry_signals(self) -> None:
+        for screen in self._bound_screens:
+            for signal in (screen.geometryChanged, screen.virtualGeometryChanged):
+                try:
+                    signal.disconnect(self._on_screen_geometry_changed)
+                except (RuntimeError, TypeError):
+                    pass
+        self._bound_screens = []
+
+    def _unbind_screen_signals(self) -> None:
+        self._disconnect_screen_geometry_signals()
+        if not self._screen_signals_connected:
+            return
+        app = QGuiApplication.instance()
+        if app is not None:
+            for signal in (
+                app.screenAdded,
+                app.screenRemoved,
+                app.primaryScreenChanged,
+            ):
+                try:
+                    signal.disconnect(self._on_screen_topology_changed)
+                except (RuntimeError, TypeError):
+                    pass
+        self._screen_signals_connected = False
+
+    def _on_screen_topology_changed(self, *_args) -> None:
+        self._rebind_screen_geometry_signals()
+        self.refresh_geometry()
+
+    def _on_screen_geometry_changed(self, *_args) -> None:
+        self.refresh_geometry()
 
     def _sync_canvas_size(self) -> None:
         content = self.window.contentItem()

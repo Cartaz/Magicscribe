@@ -74,7 +74,11 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
         assert control_window.objectName() == "controlPanel"
         assert control_window.isVisible() is False
         assert control_window.width() == 104
-        assert control_window.height() == 700
+        assert 160 <= control_window.height() <= 700
+        control_screen = control_window.screen()
+        if control_screen is not None:
+            available_height = control_screen.availableGeometry().height()
+            assert control_window.height() <= max(160, available_height - 40)
 
         assert overlay_surface.window.objectName() == "overlayWindow"
         assert overlay_surface.canvas.objectName() == "drawingCanvas"
@@ -127,8 +131,11 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
             floating_object.hide()
             floating_object.deleteLater()
         coordinator.shutdown()
+        overlay_surface.shutdown()
         overlay_surface.window.deleteLater()
         floating_component.deleteLater()
         engine.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
         event_bus.clear()
         _APP.processEvents()

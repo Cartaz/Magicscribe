@@ -230,6 +230,9 @@ def main() -> None:
         finally:
             global_shortcuts.shutdown()
             window_coordinator.shutdown()
+            overlay_surface.shutdown()
+            drawing_adapter.close()
+            tool_adapter.close()
             settings.close()
 
         logger.info("Applicazione terminata (codice %d)", exit_code)
