@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Local interactive desktop parity gate for MagicScribe on CachyOS/KDE/KWin.
-# Collects reproducible environment/log/PSS evidence and guides the checks that
-# cannot be proven in offscreen CI.
+# Interactive native-Wayland parity gate for MagicScribe on CachyOS/KDE/KWin.
+# Collects reproducible environment/log/PSS evidence for behavior that cannot
+# be proven by the offscreen GitHub Actions suite.
 
 set -Eeuo pipefail
 
@@ -10,7 +10,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 MAGICSCRIBE_STATE_DIR="${STATE_HOME}/magicscribe"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-REPORT_DIR="${MAGICSCRIBE_STATE_DIR}/desktop-gate-${STAMP}"
+REPORT_DIR="${MAGICSCRIBE_STATE_DIR}/wayland-gate-${STAMP}"
 REPORT_FILE="${REPORT_DIR}/report.txt"
 APP_LOG="${MAGICSCRIBE_STATE_DIR}/magicscribe.log"
 PYTHON="${ROOT_DIR}/.venv/bin/python"
@@ -19,6 +19,7 @@ RUN_INDEX=0
 RUN_LOG_OFFSET=0
 CURRENT_RUN_LOG=""
 CURRENT_CONSOLE_LOG=""
+EXPECTED_SCREENS=0
 
 mkdir -p "${REPORT_DIR}"
 : > "${REPORT_FILE}"
@@ -79,12 +80,14 @@ capture_pss() {
         return 1
     fi
     log "PSS ${label} (pid ${APP_PID}):"
-    grep -E '^(Pss|Pss_Anon):' "/proc/${APP_PID}/smaps_rollup" | tee -a "${REPORT_FILE}" || true
+    grep -E '^(Pss|Pss_Anon):' "/proc/${APP_PID}/smaps_rollup" \
+        | tee -a "${REPORT_FILE}" || true
 }
 
 snapshot_run_log() {
     if [[ -f "${APP_LOG}" ]]; then
-        tail -c "+$((RUN_LOG_OFFSET + 1))" "${APP_LOG}" 2>/dev/null > "${CURRENT_RUN_LOG}" || true
+        tail -c "+$((RUN_LOG_OFFSET + 1))" "${APP_LOG}" 2>/dev/null \
+            > "${CURRENT_RUN_LOG}" || true
     else
         : > "${CURRENT_RUN_LOG}"
     fi
@@ -102,22 +105,29 @@ start_app() {
 
     : > "${CURRENT_CONSOLE_LOG}"
     if [[ "${mode}" == "noportal" ]]; then
-        DBUS_SESSION_BUS_ADDRESS="unix:path=${REPORT_DIR}/missing-session-bus" \
-            "${PYTHON}" "${ROOT_DIR}/main.py" >"${CURRENT_CONSOLE_LOG}" 2>&1 &
+        env -u QT_QPA_PLATFORM \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=${REPORT_DIR}/missing-session-bus" \
+            "${PYTHON}" "${ROOT_DIR}/main.py" \
+            >"${CURRENT_CONSOLE_LOG}" 2>&1 &
     else
-        "${PYTHON}" "${ROOT_DIR}/main.py" >"${CURRENT_CONSOLE_LOG}" 2>&1 &
+        # Deliberatamente rimuoviamo l'override: il gate deve provare che
+        # main.py sceglie autonomamente il QPA Wayland in una sessione Wayland.
+        env -u QT_QPA_PLATFORM \
+            "${PYTHON}" "${ROOT_DIR}/main.py" \
+            >"${CURRENT_CONSOLE_LOG}" 2>&1 &
     fi
     APP_PID=$!
     log "MagicScribe avviato: pid=${APP_PID}, mode=${mode}, run=${RUN_INDEX}"
 
-    for _ in {1..70}; do
+    for _ in {1..100}; do
         if ! kill -0 "${APP_PID}" 2>/dev/null; then
             log "ERRORE: MagicScribe è terminato durante l'avvio."
             cat "${CURRENT_CONSOLE_LOG}" | tee -a "${REPORT_FILE}"
             return 1
         fi
         snapshot_run_log
-        if grep -q "Applicazione avviata con shell e overlay Qt Quick" "${CURRENT_RUN_LOG}" 2>/dev/null; then
+        if grep -q "Applicazione avviata con shell e overlay Qt Quick" \
+            "${CURRENT_RUN_LOG}" 2>/dev/null; then
             return 0
         fi
         sleep 0.1
@@ -125,8 +135,8 @@ start_app() {
 
     snapshot_run_log
     log "ERRORE: timeout attendendo il completamento dell'avvio."
-    tail -n 80 "${CURRENT_RUN_LOG}" | tee -a "${REPORT_FILE}" || true
-    tail -n 80 "${CURRENT_CONSOLE_LOG}" | tee -a "${REPORT_FILE}" || true
+    tail -n 100 "${CURRENT_RUN_LOG}" | tee -a "${REPORT_FILE}" || true
+    tail -n 100 "${CURRENT_CONSOLE_LOG}" | tee -a "${REPORT_FILE}" || true
     return 1
 }
 
@@ -166,7 +176,7 @@ graceful_quit_check() {
 show_current_run_log() {
     snapshot_run_log
     log "Estratto log run ${RUN_INDEX}:"
-    tail -n 100 "${CURRENT_RUN_LOG}" | tee -a "${REPORT_FILE}" || true
+    tail -n 120 "${CURRENT_RUN_LOG}" | tee -a "${REPORT_FILE}" || true
 }
 
 section "Repository"
@@ -192,6 +202,13 @@ log "XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-<unset>}"
 log "KDE_FULL_SESSION=${KDE_FULL_SESSION:-<unset>}"
 log "KDE_SESSION_VERSION=${KDE_SESSION_VERSION:-<unset>}"
 
+if [[ "${XDG_SESSION_TYPE:-}" != "wayland" || -z "${WAYLAND_DISPLAY:-}" ]]; then
+    log "SESSION_WAYLAND: FAIL — esegui il gate da una sessione KDE Plasma Wayland reale"
+    log "Report completo: ${REPORT_FILE}"
+    exit 2
+fi
+log "SESSION_WAYLAND: PASS"
+
 if command -v systemctl >/dev/null 2>&1; then
     for service in xdg-desktop-portal.service xdg-desktop-portal-kde.service; do
         state="$(systemctl --user is-active "${service}" 2>/dev/null || true)"
@@ -200,7 +217,8 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 if command -v pgrep >/dev/null 2>&1; then
     log "portal processes:"
-    pgrep -af 'xdg-desktop-portal($|-)|xdg-desktop-portal-kde' | tee -a "${REPORT_FILE}" || log "  nessun processo portal trovato"
+    pgrep -af 'xdg-desktop-portal($|-)|xdg-desktop-portal-kde' \
+        | tee -a "${REPORT_FILE}" || log "  nessun processo portal trovato"
 fi
 if command -v busctl >/dev/null 2>&1; then
     if busctl --user list 2>/dev/null | grep -q 'org.freedesktop.portal.Desktop'; then
@@ -210,18 +228,46 @@ if command -v busctl >/dev/null 2>&1; then
     fi
 fi
 
+if command -v kscreen-doctor >/dev/null 2>&1; then
+    log "Configurazione output KScreen:"
+    kscreen-doctor -o 2>&1 | tee -a "${REPORT_FILE}" || true
+else
+    log "kscreen-doctor: non disponibile"
+fi
+
 section "Runtime prerequisite"
 if [[ ! -x "${PYTHON}" ]]; then
     log "Ambiente virtuale assente: eseguo install.sh"
     bash "${ROOT_DIR}/install.sh" | tee -a "${REPORT_FILE}"
 fi
+
+"${PYTHON}" "${ROOT_DIR}/scripts/verify_release_constraints.py" \
+    | tee -a "${REPORT_FILE}"
+
+EXPECTED_SCREENS="$(
+    QT_QPA_PLATFORM=wayland "${PYTHON}" - <<'PY'
+from PySide6.QtGui import QGuiApplication
+app = QGuiApplication([])
+print(len(app.screens()))
+PY
+)"
+if [[ ! "${EXPECTED_SCREENS}" =~ ^[1-9][0-9]*$ ]]; then
+    log "SCREEN_PROBE: FAIL — conteggio QScreen non valido: ${EXPECTED_SCREENS}"
+    exit 2
+fi
+log "SCREEN_PROBE: PASS — QScreen Wayland=${EXPECTED_SCREENS}"
+
 "${PYTHON}" - <<'PY' | tee -a "${REPORT_FILE}"
-from PySide6.QtCore import qVersion
+from pathlib import Path
 from PySide6 import __version__ as pyside_version
+from PySide6.QtCore import QLibraryInfo, qVersion
+platforms = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)) / "platforms"
+plugins = sorted(path.name for path in platforms.glob("libqwayland*.so"))
 print(f"Python/PySide6/Qt runtime: PySide6 {pyside_version}, Qt {qVersion()}")
+print("Qt Wayland QPA plugins: " + ", ".join(plugins))
 PY
 
-section "Run 1 — production portal path"
+section "Run 1 — native Wayland + production portal"
 log "Se KDE mostra la finestra GlobalShortcuts, ACCETTA le cinque scorciatoie."
 start_app normal
 printf '\nGestisci ora l\047eventuale dialog GlobalShortcuts; poi premi Invio...'
@@ -229,13 +275,22 @@ IFS= read -r _
 sleep 0.5
 show_current_run_log
 
-if grep -q "Piattaforma Qt: xcb" "${CURRENT_RUN_LOG}"; then
+if grep -q "Piattaforma Qt effettiva: wayland" "${CURRENT_RUN_LOG}" \
+    && grep -q "Backend Wayland nativo attivo" "${CURRENT_RUN_LOG}"; then
     log "ENV_QPA: PASS"
 else
-    log "ENV_QPA: FAIL — il gate target richiede il runtime Qt xcb/XWayland"
+    log "ENV_QPA: FAIL — MagicScribe non sta usando il QPA Wayland nativo"
 fi
 
-if grep -q "Global shortcuts registrate tramite XDG Desktop Portal" "${CURRENT_RUN_LOG}"; then
+if grep -q "Overlay avviato: backend=wayland, superfici=${EXPECTED_SCREENS}" \
+    "${CURRENT_RUN_LOG}"; then
+    log "OVERLAY_SURFACES: PASS"
+else
+    log "OVERLAY_SURFACES: FAIL — attese ${EXPECTED_SCREENS} superfici Wayland"
+fi
+
+if grep -q "Global shortcuts registrate tramite XDG Desktop Portal" \
+    "${CURRENT_RUN_LOG}"; then
     log "PORTAL_GLOBAL: PASS"
 else
     log "PORTAL_GLOBAL: FAIL"
@@ -260,31 +315,41 @@ log "Riporta il focus sul pannello di controllo."
 ask "GS6" "Con il pannello focalizzato, F9 produce una sola commutazione e non un doppio trigger?" || true
 ask "GS7" "Con il pannello focalizzato, undo/redo/visibility/clear producono ciascuno una sola azione?" || true
 
-section "Compact vertical toolbar"
-ask "TB1" "La toolbar è frameless, compatta, verticale e parte sul lato sinistro senza uscire dall'area disponibile dello schermo?" || true
-ask "TB2" "Un click sull'icona MagicScribe in alto riduce la toolbar lasciando visibile soltanto la piccola floating palette?" || true
-ask "TB3" "Un click sulla floating palette ripristina la toolbar nella posizione precedente?" || true
-ask "TB4" "Trascinando dall'icona MagicScribe in alto la toolbar si sposta correttamente senza minimizzarsi involontariamente al rilascio?" || true
-ask "TB5" "Cambiando strumento resta selezionato un solo pulsante, con icona arancione + stato inset/glow coerente?" || true
-ask "TB6" "Slider dello spessore e swatch colore sono interamente visibili, raggiungibili e aggiornano il tratto selezionato senza clipping?" || true
+section "Compact vertical toolbar — XDG Shell"
+ask "TB1" "La toolbar è frameless, compatta, verticale e interamente visibile? La posizione iniziale può essere scelta da KWin." || true
+ask "TB2" "Un click sull'icona MagicScribe riduce la toolbar lasciando soltanto la floating palette?" || true
+ask "TB3" "Un click sulla floating palette ripristina una toolbar interamente visibile e utilizzabile?" || true
+ask "TB4" "Trascinando dall'icona MagicScribe, startSystemMove sposta correttamente la toolbar sotto KWin/Wayland?" || true
+ask "TB5" "Cambiando strumento resta selezionato un solo pulsante, con stato inset/arancione coerente?" || true
+ask "TB6" "Slider dello spessore e swatch colore sono visibili, raggiungibili e aggiornano lo strumento?" || true
 
-section "Qt Quick overlay / floating palette"
-ask "OV1" "Overlay visivamente trasparente salvo le annotazioni?" || true
-ask "OV2" "Con disegno disattivato, click e interazioni passano al desktop/app sottostante?" || true
-ask "OV3" "Con disegno attivo, il puntatore viene catturato correttamente dall'overlay?" || true
-ask "OV4" "Penna e Smooth hanno comportamento e resa corretti?" || true
-ask "OV5" "Linea, rettangolo e cerchio mostrano preview corretta e commit corretto?" || true
-ask "OV6" "Gomma cancella correttamente e il cursore passa correttamente gomma↔normale?" || true
-ask "OV7" "Undo, redo, clear e visibility restano coerenti dopo più tratti?" || true
+section "Qt Quick overlay — native Wayland"
+ask "OV1" "L'overlay è visivamente trasparente salvo le annotazioni, senza fondo nero/opaco?" || true
+ask "OV2" "Con disegno disattivato, click, scroll e interazioni passano all'app sottostante?" || true
+ask "OV3" "Con disegno attivo, il puntatore viene catturato dall'overlay e non aziona l'app sottostante?" || true
+ask "OV4" "Ripetendo almeno 10 volte F9, il passaggio click-through↔capture resta stabile senza finestre che spariscono?" || true
+ask "OV5" "Penna e Smooth hanno comportamento e resa corretti?" || true
+ask "OV6" "Linea, rettangolo e cerchio mostrano preview e commit corretti?" || true
+ask "OV7" "Gomma cancella correttamente e il cursore passa gomma↔normale?" || true
+ask "OV8" "Undo, redo, clear e visibility restano coerenti dopo più tratti?" || true
+
+section "Floating palette / stacking / focus"
 ask "FL1" "La floating palette ripristina il pannello e non riceve tratti di disegno?" || true
-ask "FL2" "Il drag della floating palette funziona correttamente sotto KWin/XWayland?" || true
-ask "ZW1" "Dopo più toggle del disegno, overlay resta sotto pannello/floating e non li copre?" || true
+ask "FL2" "Il drag della floating palette funziona tramite startSystemMove sotto KWin/Wayland?" || true
+ask "ZW1" "Dopo più toggle, pannello e floating palette restano sopra l'overlay e non vengono coperti?" || true
+ask "A11Y1" "La floating palette non ruba il focus all'app annotata e resta utilizzabile col mouse?" || true
+ask "A11Y2" "Tab/focus visibile nel pannello è coerente e non ci sono controlli irraggiungibili?" || true
 
-if command -v xrandr >/dev/null 2>&1; then
-    log "Configurazione monitor riportata da xrandr:"
-    xrandr --listmonitors 2>&1 | tee -a "${REPORT_FILE}" || true
+section "Multi-monitor / global coordinates"
+if [[ "${EXPECTED_SCREENS}" -gt 1 ]]; then
+    ask "MM1" "Ogni monitor è coperto dall'overlay trasparente e resta utilizzabile quando il disegno è disattivato?" || true
+    ask "MM2" "Puoi creare tratti separatamente su ciascun monitor e ogni tratto resta nella posizione corretta dopo undo/redo/visibility?" || true
+    ask "MM3" "Monitor disposti con coordinate negative/non allineate non spostano o duplicano le annotazioni?" || true
+else
+    log "MM1: N/A — un solo QScreen rilevato"
+    log "MM2: N/A — un solo QScreen rilevato"
+    log "MM3: N/A — un solo QScreen rilevato"
 fi
-ask "MM1" "Se usi più monitor, l'overlay copre correttamente l'intero desktop virtuale (anche coordinate negative)? Altrimenti SKIP." || true
 
 section "PSS after controlled drawing load"
 printf '\nDisegna ora ESATTAMENTE 20 tratti aggiuntivi, distribuendoli tra gli strumenti.\n'
@@ -292,29 +357,32 @@ printf 'Quando hai finito premi Invio per acquisire il secondo snapshot PSS...'
 IFS= read -r _
 capture_pss "after_20_additional_strokes"
 
-section "Accessibility/focus observation"
-ask "A11Y1" "La floating palette non ruba il focus all'app annotata e resta utilizzabile correttamente col mouse?" || true
-ask "A11Y2" "Tab/focus visibile nel pannello di controllo è coerente e non ci sono controlli irraggiungibili?" || true
-
 section "Lifecycle"
 graceful_quit_check "LC1" || true
 
-section "Run 2 — portal rejection / local fallback"
-log "Riapro MagicScribe. Se KDE ripropone il dialog GlobalShortcuts, questa volta ANNULLA/RIFIUTA."
+section "Run 2 — portal rejection / local WindowShortcut fallback"
+log "Riapro MagicScribe. Se KDE ripropone GlobalShortcuts, questa volta ANNULLA/RIFIUTA."
 start_app normal
 printf '\nGestisci ora l\047eventuale dialog; poi premi Invio...'
 IFS= read -r _
 sleep 0.5
 show_current_run_log
 
+if grep -q "Piattaforma Qt effettiva: wayland" "${CURRENT_RUN_LOG}"; then
+    log "ENV_QPA_RUN2: PASS"
+else
+    log "ENV_QPA_RUN2: FAIL"
+fi
+
 fallback_observed=false
 if grep -q "Global shortcuts non attive:" "${CURRENT_RUN_LOG}"; then
-    log "PORTAL_REJECTION: PASS — percorso fallback osservato nel log del secondo avvio"
+    log "PORTAL_REJECTION: PASS — fallback locale osservato"
     fallback_observed=true
-elif grep -q "Global shortcuts registrate tramite XDG Desktop Portal" "${CURRENT_RUN_LOG}"; then
-    log "PORTAL_REJECTION: SKIP — KDE ha registrato/riusato la sessione invece di esercitare il rifiuto"
+elif grep -q "Global shortcuts registrate tramite XDG Desktop Portal" \
+    "${CURRENT_RUN_LOG}"; then
+    log "PORTAL_REJECTION: N/A — KDE ha riutilizzato la sessione portal"
 else
-    log "PORTAL_REJECTION: FAIL — nessun esito portal conclusivo nel log del secondo avvio"
+    log "PORTAL_REJECTION: FAIL — nessun esito portal conclusivo"
 fi
 
 if [[ "${fallback_observed}" == true ]]; then
@@ -326,19 +394,24 @@ if [[ "${fallback_observed}" == true ]]; then
     ask "FB5" "Shift+F8 funziona localmente con il pannello focalizzato?" || true
     graceful_quit_check "LC2" || true
 else
-    log "FB1: SKIP"
-    log "FB2: SKIP"
-    log "FB3: SKIP"
-    log "FB4: SKIP"
-    log "FB5: SKIP"
+    log "FB1: N/A"
+    log "FB2: N/A"
+    log "FB3: N/A"
+    log "FB4: N/A"
+    log "FB5: N/A"
     stop_app_forcefully
 fi
 
 section "Forced portal-unavailable fallback"
-log "Eseguo una terza istanza con session bus volutamente irraggiungibile: serve solo a provare il fallback locale su KWin, non sostituisce il test di rifiuto reale del dialog KDE."
+log "Eseguo una terza istanza Wayland con session bus volutamente irraggiungibile per provare il fallback locale deterministico."
 start_app noportal
 sleep 0.5
 show_current_run_log
+if grep -q "Piattaforma Qt effettiva: wayland" "${CURRENT_RUN_LOG}"; then
+    log "ENV_QPA_RUN3: PASS"
+else
+    log "ENV_QPA_RUN3: FAIL"
+fi
 if grep -q "Global shortcuts non attive:" "${CURRENT_RUN_LOG}"; then
     log "FORCED_FALLBACK_PATH: PASS"
     log "Porta il focus sul pannello e prova le cinque scorciatoie."
@@ -361,16 +434,17 @@ fi
 pass_count="$(grep -c ': PASS' "${REPORT_FILE}" || true)"
 fail_count="$(grep -c ': FAIL' "${REPORT_FILE}" || true)"
 skip_count="$(grep -c ': SKIP' "${REPORT_FILE}" || true)"
-log "Risultati: PASS=${pass_count} FAIL=${fail_count} SKIP=${skip_count}"
+na_count="$(grep -c ': N/A' "${REPORT_FILE}" || true)"
+log "Risultati: PASS=${pass_count} FAIL=${fail_count} SKIP=${skip_count} N/A=${na_count}"
 log "Report completo: ${REPORT_FILE}"
 
 if [[ "${fail_count}" -gt 0 ]]; then
-    log "GATE: FAIL — non rimuovere il fallback legacy."
+    log "GATE: FAIL — non chiudere issue #24 e non rimuovere il rollback xcb/X11."
     exit 2
 fi
 if [[ "${skip_count}" -gt 0 ]]; then
-    log "GATE: INCOMPLETO — nessun FAIL, ma restano verifiche SKIP. Non chiudere issue #6."
+    log "GATE: INCOMPLETO — nessun FAIL, ma restano verifiche manuali SKIP."
     exit 3
 fi
 
-log "GATE: PASS — nessun FAIL/SKIP nel report interattivo. Il report va comunque revisionato prima di chiudere issue #6."
+log "GATE: PASS — nessun FAIL/SKIP. Revisionare il report prima di chiudere issue #24 e rimuovere il rollback xcb/X11."
