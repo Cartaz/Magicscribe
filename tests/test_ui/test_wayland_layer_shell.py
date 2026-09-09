@@ -64,21 +64,23 @@ def test_layer_shell_drag_uses_margins_not_system_move() -> None:
         assert "active && !root.layerShellPlacement" in source
 
 
-def test_wayland_drag_reconstructs_desktop_pointer_coordinates() -> None:
+def test_wayland_control_drag_uses_global_pointer_coordinates_only() -> None:
     control = _source("WaylandControlPanel.qml")
-    floating = _source("WaylandFloatingPalette.qml")
 
-    for source in (control, floating):
-        assert "MouseArea" in source
-        assert "pressDesktopX" in source
-        assert "pressDesktopY" in source
-        assert "currentDesktopX" in source
-        assert "currentDesktopY" in source
-        assert "setWaylandDragMargins" in source
-        assert "root.layerShellMarginLeft + mouse.x" in source or (
-            "root.layerShellMarginLeft\n"
-            "                                      + waylandLogoDragHandle.x + mouse.x"
-        ) in source
+    assert "global_cursor_position()" in control
+    assert "pressGlobalX" in control
+    assert "pressGlobalY" in control
+    assert "cursor.x - pressGlobalX" in control
+    assert "cursor.y - pressGlobalY" in control
+    assert "setWaylandDragMargins" in control
+
+    # Never rebuild desktop coordinates from a margin that is itself being
+    # updated during the active pointer gesture: KWin commits layer placement
+    # asynchronously, which creates large positive-feedback jumps.
+    assert "root.layerShellMarginLeft + mouse.x" not in control
+    assert "root.layerShellMarginTop + mouse.y" not in control
+    assert "+ waylandLogoDragHandle.x + mouse.x" not in control
+    assert "+ waylandLogoDragHandle.y + mouse.y" not in control
 
 
 def test_qmldir_exports_wayland_components() -> None:
