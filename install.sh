@@ -65,8 +65,8 @@ echo "[2/7] Installazione dipendenze riproducibili..."
     --quiet
 echo "     Dipendenze release installate dai pin verificati."
 
-# 3. Verifica runtime Qt/PySide6 + D-Bus + prerequisiti xcb/X11
-echo "[3/7] Verifica runtime PySide6/Qt, D-Bus e xcb/X11..."
+# 3. Verifica runtime Qt/PySide6 + D-Bus + Wayland nativo
+echo "[3/7] Verifica runtime PySide6/Qt, D-Bus e Wayland nativo..."
 "${VENV_DIR}/bin/python" - <<'PY'
 import ctypes.util
 from pathlib import Path
@@ -84,26 +84,39 @@ assert QQmlApplicationEngine is not None
 assert QApplication is not None
 assert jeepney is not None
 
-plugins_root = Path(
-    QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)
-)
-xcb_plugin = plugins_root / "platforms" / "libqxcb.so"
-if not xcb_plugin.is_file():
-    raise SystemExit(f"Plugin Qt xcb non trovato: {xcb_plugin}")
+plugins_root = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))
+platforms_dir = plugins_root / "platforms"
+wayland_plugins = sorted(platforms_dir.glob("libqwayland*.so"))
+if not wayland_plugins:
+    raise SystemExit(
+        "Plugin Qt Wayland non trovato in "
+        f"{platforms_dir}; il porting nativo richiede il QPA Wayland"
+    )
 
 missing_native = [
-    name for name in ("X11", "Xext")
+    name for name in ("wayland-client", "xkbcommon")
     if ctypes.util.find_library(name) is None
 ]
 if missing_native:
     raise SystemExit(
-        "Librerie native richieste dal runtime xcb mancanti: "
+        "Librerie native richieste dal runtime Wayland mancanti: "
         + ", ".join(missing_native)
     )
 
+# xcb/X11 resta soltanto un rollback diagnostico durante il gate di migrazione.
+xcb_plugin = platforms_dir / "libqxcb.so"
+x11_fallback = (
+    xcb_plugin.is_file()
+    and ctypes.util.find_library("X11") is not None
+    and ctypes.util.find_library("Xext") is not None
+)
+
 print(
     f"     PySide6/Qt {qVersion()} OK "
-    "(Jeepney D-Bus, Qt xcb, X11 e Xext disponibili)"
+    f"(Jeepney, Wayland QPA={len(wayland_plugins)}, wayland-client, xkbcommon)"
+)
+print(
+    "     Rollback xcb/X11: " + ("disponibile" if x11_fallback else "non disponibile")
 )
 PY
 
