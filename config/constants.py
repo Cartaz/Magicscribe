@@ -58,7 +58,6 @@ class ToolDefaults:
     CIRCLE_SIZE: int = 3
     SMOOTH_COLOR: str = "#ff0000"
     SMOOTH_SIZE: int = 5
-    OVERLAY_OPACITY: float = 0.75
     UNDO_MAX_DEPTH: int = 50
 
 
