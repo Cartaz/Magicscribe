@@ -36,6 +36,8 @@ def test_overlay_surface_toggles_native_input_transparency(tmp_path) -> None:
     _APP.processEvents()
 
     try:
+        assert surface._screen_signals_connected is True
+        assert surface._bound_screens
         assert surface.window.flags() & Qt.WindowType.WindowTransparentForInput
 
         drawing_adapter.toggle_drawing()
@@ -51,7 +53,11 @@ def test_overlay_surface_toggles_native_input_transparency(tmp_path) -> None:
         assert surface.window.flags() & Qt.WindowType.WindowTransparentForInput
     finally:
         surface.shutdown()
+        assert surface._screen_signals_connected is False
+        assert surface._bound_screens == []
         surface.window.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
         event_bus.clear()
         _APP.processEvents()
 
@@ -97,13 +103,15 @@ def test_overlay_xcb_uses_input_shape_without_changing_window_flags(
     finally:
         surface.shutdown()
         surface.window.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
         event_bus.clear()
         _APP.processEvents()
 
 
 def test_drawing_canvas_commits_and_renders_pen_stroke(tmp_path) -> None:
     event_bus.clear()
-    controller, drawing_adapter, _tool_adapter = _adapters(tmp_path)
+    controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
     canvas = DrawingCanvas(drawing_adapter)
     canvas.setWidth(64)
     canvas.setHeight(64)
@@ -127,6 +135,8 @@ def test_drawing_canvas_commits_and_renders_pen_stroke(tmp_path) -> None:
     assert image.pixelColor(10, 10).alpha() > 0
 
     canvas.deleteLater()
+    drawing_adapter.close()
+    tool_adapter.close()
     event_bus.clear()
     _APP.processEvents()
 
@@ -150,5 +160,7 @@ def test_shape_preview_keeps_two_endpoints(tmp_path) -> None:
     assert canvas._current_stroke is None
 
     canvas.deleteLater()
+    drawing_adapter.close()
+    tool_adapter.close()
     event_bus.clear()
     _APP.processEvents()
