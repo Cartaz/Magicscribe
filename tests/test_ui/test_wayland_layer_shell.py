@@ -39,7 +39,11 @@ def test_wayland_shell_windows_are_above_overlay() -> None:
 
     for source in (control, floating):
         assert "LayerShell.Window.LayerOverlay" in source
-        assert "LayerShell.Window.margins" in source
+        assert "LayerShell.Window.margins.left:" in source
+        assert "LayerShell.Window.margins.top:" in source
+        assert "LayerShell.Window.margins.right:" in source
+        assert "LayerShell.Window.margins.bottom:" in source
+        assert "LayerShell.Window.margins: ({" not in source
         assert "layerShellPlacement: true" in source
         assert "flags: Qt.FramelessWindowHint" in source
         assert "WindowStaysOnTopHint" not in source
