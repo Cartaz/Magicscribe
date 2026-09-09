@@ -16,6 +16,7 @@ from PySide6.QtGui import (
     QPixmap,
     QScreen,
 )
+from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickWindow
 
 from ui.adapters.drawing_adapter import DrawingAdapter
@@ -60,24 +61,30 @@ class OverlaySurface:
     """Possiede le finestre overlay e la loro policy di input/rendering.
 
     X11/offscreen usa una singola finestra sul desktop virtuale. Wayland nativo
-    usa invece una superficie fullscreen per ogni QScreen, evitando di dipendere
-    dal posizionamento assoluto delle top-level che XDG Shell non espone. Tutte
-    le canvas leggono e scrivono coordinate globali, quindi la cronologia dei
-    tratti resta unica e indipendente dal monitor che ha ricevuto la gesture.
+    usa una layer-surface per ogni QScreen: il compositor possiede stacking e
+    geometria, mentre tutte le canvas leggono/scrivono nello stesso spazio di
+    coordinate globali del desktop.
     """
 
     def __init__(
         self,
         drawing_adapter: DrawingAdapter,
         tool_adapter: ToolAdapter,
+        *,
+        qml_engine: QQmlEngine | None = None,
     ) -> None:
         self._drawing_adapter = drawing_adapter
         self._tool_adapter = tool_adapter
+        self._qml_engine = qml_engine
+        self._wayland_component: QQmlComponent | None = None
         self._eraser_cursor = _create_eraser_cursor()
         self._screen_signals_connected = False
         self._bound_screens: list[QScreen] = []
         self._views: list[_OverlayView] = []
         self._shown = False
+
+        if _is_native_wayland():
+            self._prepare_wayland_component()
 
         drawing_adapter.activeChanged.connect(self._sync_input_mode)
         tool_adapter.currentToolChanged.connect(self._sync_cursor)
@@ -117,20 +124,20 @@ class OverlaySurface:
     def show(self) -> None:
         self._shown = True
         for view in self._views:
-            if _is_native_wayland() and view.screen is not None:
-                view.window.showFullScreen()
-            else:
-                view.window.show()
-        # X11 Shape richiede un native id valido e Qt Wayland puo' ricreare la
-        # surface quando cambiano i flag: sincronizziamo sempre dopo show().
+            view.window.show()
         self._sync_input_mode()
         logger.info(
-            "Overlay avviato: backend=%s, superfici=%d",
+            "Overlay avviato: backend=%s, ruolo=%s, superfici=%d",
             _platform_name(),
+            "layer-shell/top" if _is_native_wayland() else "qt-toplevel",
             len(self._views),
         )
 
     def ensure_z_order(self) -> None:
+        if _is_native_wayland():
+            # Lo stacking e' parte del ruolo layer-shell e non va combattuto
+            # con raise/lower delle normali top-level.
+            return
         for view in self._views:
             if view.window.isVisible():
                 view.window.lower()
@@ -166,6 +173,22 @@ class OverlaySurface:
         view.canvas.set_global_origin(QPointF(geometry.x(), geometry.y()))
         self._sync_canvas_size(view)
 
+    def _prepare_wayland_component(self) -> None:
+        engine = self._qml_engine
+        if engine is None:
+            raise RuntimeError(
+                "Overlay Wayland nativo richiede il QQmlEngine condiviso della shell"
+            )
+        component = QQmlComponent(engine)
+        component.loadFromModule("MagicScribe", "WaylandOverlayWindow")
+        if not component.isReady():
+            errors = "; ".join(error.toString() for error in component.errors())
+            component.deleteLater()
+            raise RuntimeError(
+                "Impossibile caricare WaylandOverlayWindow/layer-shell: " + errors
+            )
+        self._wayland_component = component
+
     def _build_views(self) -> None:
         screens = list(QGuiApplication.screens())
         if _is_native_wayland() and screens:
@@ -174,23 +197,41 @@ class OverlaySurface:
         else:
             self._views.append(self._create_view(None, 0))
 
-    def _create_view(self, screen: QScreen | None, index: int) -> _OverlayView:
-        window = QQuickWindow()
+    def _create_window(self, index: int) -> QQuickWindow:
+        if _is_native_wayland():
+            component = self._wayland_component
+            if component is None:
+                raise RuntimeError("Componente layer-shell overlay non inizializzato")
+            obj = component.create()
+            if not isinstance(obj, QQuickWindow):
+                if obj is not None:
+                    obj.deleteLater()
+                errors = "; ".join(error.toString() for error in component.errors())
+                raise RuntimeError(
+                    "WaylandOverlayWindow non ha creato un QQuickWindow: " + errors
+                )
+            window = obj
+        else:
+            window = QQuickWindow()
+            window.setColor(QColor(0, 0, 0, 0))
+            window.setFlags(
+                Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.WindowStaysOnTopHint
+                | Qt.WindowType.Tool
+                | Qt.WindowType.WindowDoesNotAcceptFocus
+            )
+
         window.setObjectName("overlayWindow" if index == 0 else f"overlayWindow{index}")
         window.setTitle("MagicScribe Overlay")
-        window.setColor(QColor(0, 0, 0, 0))
+        return window
+
+    def _create_view(self, screen: QScreen | None, index: int) -> _OverlayView:
+        window = self._create_window(index)
         if screen is not None:
             window.setScreen(screen)
 
-        flags = (
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
-            | Qt.WindowType.WindowDoesNotAcceptFocus
-        )
         if _platform_name() != "xcb" and not self._drawing_adapter.active:
-            flags |= Qt.WindowType.WindowTransparentForInput
-        window.setFlags(flags)
+            window.setFlag(Qt.WindowType.WindowTransparentForInput, True)
 
         content = window.contentItem()
         origin = QPointF()
@@ -305,17 +346,14 @@ class OverlaySurface:
         window: QQuickWindow,
         click_through: bool,
     ) -> None:
-        """Usa la policy Qt nativa, preservando fullscreen su Wayland."""
+        """Aggiorna la wl_surface input region tramite la policy Qt."""
         was_visible = window.isVisible()
         window.setFlag(
             Qt.WindowType.WindowTransparentForInput,
             click_through,
         )
         if was_visible and not window.isVisible():
-            if _is_native_wayland() and window.screen() is not None:
-                window.showFullScreen()
-            else:
-                window.show()
+            window.show()
 
     def _sync_cursor(self) -> None:
         if not self._drawing_adapter.active:
