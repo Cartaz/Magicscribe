@@ -53,34 +53,38 @@ def test_wayland_shell_windows_are_above_overlay() -> None:
     assert "KeyboardInteractivityNone" in floating
 
 
-def test_layer_shell_drag_uses_margins_not_system_move() -> None:
+def test_wayland_control_drag_moves_item_inside_stationary_surface() -> None:
     control = _source("ControlPanel.qml")
+    wayland = _source("WaylandControlPanel.qml")
+
+    assert "layerShellFullscreen: true" in wayland
+    assert "LayerShell.Window.AnchorTop" in wayland
+    assert "LayerShell.Window.AnchorBottom" in wayland
+    assert "LayerShell.Window.AnchorLeft" in wayland
+    assert "LayerShell.Window.AnchorRight" in wayland
+    assert "LayerShell.Window.margins.left: 0" in wayland
+    assert "LayerShell.Window.margins.top: 0" in wayland
+
+    assert "id: toolbarHost" in control
+    assert "target: root.layerShellFullscreen ? toolbarHost : null" in control
+    assert "root.shellAdapter.set_control_input_region(" in control
+    assert "onXChanged: root.syncLayerShellInputRegion()" in control
+    assert "onYChanged: root.syncLayerShellInputRegion()" in control
+
+    # The control surface itself must remain stationary during the gesture.
+    assert "setWaylandDragMargins" not in wayland
+    assert "global_cursor_position()" not in wayland
+    assert "pressGlobalX" not in wayland
+    assert "pressGlobalY" not in wayland
+
+
+def test_floating_layer_shell_drag_still_uses_margins() -> None:
     floating = _source("FloatingPalette.qml")
 
-    for source in (control, floating):
-        assert "moveLayerShellBy" in source
-        assert "xAxis.onActiveValueChanged" in source
-        assert "yAxis.onActiveValueChanged" in source
-        assert "active && !root.layerShellPlacement" in source
-
-
-def test_wayland_control_drag_uses_global_pointer_coordinates_only() -> None:
-    control = _source("WaylandControlPanel.qml")
-
-    assert "global_cursor_position()" in control
-    assert "pressGlobalX" in control
-    assert "pressGlobalY" in control
-    assert "cursor.x - pressGlobalX" in control
-    assert "cursor.y - pressGlobalY" in control
-    assert "setWaylandDragMargins" in control
-
-    # Never rebuild desktop coordinates from a margin that is itself being
-    # updated during the active pointer gesture: KWin commits layer placement
-    # asynchronously, which creates large positive-feedback jumps.
-    assert "root.layerShellMarginLeft + mouse.x" not in control
-    assert "root.layerShellMarginTop + mouse.y" not in control
-    assert "+ waylandLogoDragHandle.x + mouse.x" not in control
-    assert "+ waylandLogoDragHandle.y + mouse.y" not in control
+    assert "moveLayerShellBy" in floating
+    assert "xAxis.onActiveValueChanged" in floating
+    assert "yAxis.onActiveValueChanged" in floating
+    assert "active && !root.layerShellPlacement" in floating
 
 
 def test_qmldir_exports_wayland_components() -> None:
