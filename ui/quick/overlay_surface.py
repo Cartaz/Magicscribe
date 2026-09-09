@@ -346,7 +346,7 @@ class OverlaySurface:
         window: QQuickWindow,
         click_through: bool,
     ) -> None:
-        """Aggiorna la wl_surface input region tramite la policy Qt."""
+        """Aggiorna la wl_surface input region e ne forza il commit."""
         was_visible = window.isVisible()
         window.setFlag(
             Qt.WindowType.WindowTransparentForInput,
@@ -354,6 +354,10 @@ class OverlaySurface:
         )
         if was_visible and not window.isVisible():
             window.show()
+        if was_visible:
+            # QtWayland aggiorna wl_surface.set_input_region() in setWindowFlags,
+            # ma la richiesta diventa effettiva solo al successivo surface commit.
+            window.requestUpdate()
 
     def _sync_cursor(self) -> None:
         if not self._drawing_adapter.active:
