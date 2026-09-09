@@ -64,6 +64,23 @@ def test_layer_shell_drag_uses_margins_not_system_move() -> None:
         assert "active && !root.layerShellPlacement" in source
 
 
+def test_wayland_drag_reconstructs_desktop_pointer_coordinates() -> None:
+    control = _source("WaylandControlPanel.qml")
+    floating = _source("WaylandFloatingPalette.qml")
+
+    for source in (control, floating):
+        assert "MouseArea" in source
+        assert "pressDesktopX" in source
+        assert "pressDesktopY" in source
+        assert "currentDesktopX" in source
+        assert "currentDesktopY" in source
+        assert "setWaylandDragMargins" in source
+        assert "root.layerShellMarginLeft + mouse.x" in source or (
+            "root.layerShellMarginLeft\n"
+            "                                      + waylandLogoDragHandle.x + mouse.x"
+        ) in source
+
+
 def test_qmldir_exports_wayland_components() -> None:
     qmldir = (QML_DIR / "qmldir").read_text(encoding="utf-8")
     assert "WaylandLayerSurface 1.0 WaylandLayerSurface.qml" in qmldir
