@@ -97,10 +97,6 @@ class StrokeManager:
         """Restituisce tutti i tratti completati (copia)."""
         return list(self._strokes)
 
-    def get_visible_strokes(self) -> list[Stroke]:
-        """Restituisce solo i tratti visibili."""
-        return [s for s in self._strokes if s.visible]
-
     @property
     def stroke_count(self) -> int:
         """Numero di tratti nella cronologia."""
@@ -113,5 +109,5 @@ class StrokeManager:
 
     @property
     def can_redo(self) -> bool:
-        """Se e' possibile ripristinare un tratto."""
+        """Se e' possibile ripristinare un tratto annullato."""
         return len(self._redo_stack) > 0
