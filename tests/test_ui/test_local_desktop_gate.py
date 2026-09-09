@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from config.constants import HotkeyDefaults
+
 
 def test_local_desktop_gate_captures_required_evidence() -> None:
     root = Path(__file__).resolve().parents[2]
@@ -13,7 +15,7 @@ def test_local_desktop_gate_captures_required_evidence() -> None:
     assert "Global shortcuts non attive:" in source
     assert "Piattaforma Qt: xcb" in source
     assert "xrandr --listmonitors" in source
-    assert "Ctrl+Shift+Q" in source
+    assert HotkeyDefaults.QUIT_APP in source
     assert "after_20_additional_strokes" in source
 
 
