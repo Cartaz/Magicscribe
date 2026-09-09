@@ -1,0 +1,5 @@
+# Runtime versions audited for MagicScribe 2.0.0.
+# requirements.txt remains the compatibility contract; this file selects the
+# exact versions used by install.sh and release validation.
+PySide6==6.11.2
+jeepney==0.9.0
