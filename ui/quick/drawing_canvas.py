@@ -12,16 +12,19 @@ from ui.drawing_engine import DrawingEngine
 
 
 class DrawingCanvas(QQuickPaintedItem):
-    """Superficie di disegno Qt Quick con stato di gesture solo temporaneo."""
+    """Superficie di disegno con coordinate canoniche globali del desktop."""
 
     def __init__(
         self,
         adapter: DrawingAdapter,
         parent=None,
+        *,
+        global_origin: QPointF | None = None,
     ) -> None:
         super().__init__(parent)
         self._adapter = adapter
         self._current_stroke: Stroke | None = None
+        self._global_origin = QPointF(global_origin or QPointF())
 
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
         self.setAntialiasing(True)
@@ -31,15 +34,30 @@ class DrawingCanvas(QQuickPaintedItem):
         adapter.repaintRequested.connect(self.update)
         adapter.activeChanged.connect(self._on_active_changed)
 
+    def set_global_origin(self, origin: QPointF) -> None:
+        """Imposta l'origine globale corrispondente al pixel locale (0, 0)."""
+        if self._global_origin == origin:
+            return
+        self._global_origin = QPointF(origin)
+        self.update()
+
+    def global_origin(self) -> QPointF:
+        return QPointF(self._global_origin)
+
     def paint(self, painter: QPainter) -> None:
-        """Renderizza snapshot canonico + preview della gesture corrente."""
+        """Renderizza lo snapshot globale nella porzione di desktop locale."""
         if not self._adapter.annotationsVisible:
             return
 
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        DrawingEngine.render_strokes(painter, self._adapter.strokes_snapshot())
-        if self._current_stroke is not None:
-            DrawingEngine.render_stroke(painter, self._current_stroke)
+        painter.save()
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.translate(-self._global_origin.x(), -self._global_origin.y())
+            DrawingEngine.render_strokes(painter, self._adapter.strokes_snapshot())
+            if self._current_stroke is not None:
+                DrawingEngine.render_stroke(painter, self._current_stroke)
+        finally:
+            painter.restore()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if (
@@ -112,6 +130,8 @@ class DrawingCanvas(QQuickPaintedItem):
             self._current_stroke = None
             self.update()
 
-    @staticmethod
-    def _point(position: QPointF) -> Point:
-        return Point(x=position.x(), y=position.y())
+    def _point(self, position: QPointF) -> Point:
+        return Point(
+            x=position.x() + self._global_origin.x(),
+            y=position.y() + self._global_origin.y(),
+        )
