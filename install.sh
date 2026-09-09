@@ -151,9 +151,25 @@ desktop_exec_quote() {
 import sys
 
 value = sys.argv[1]
-for char in ("\\", '"', "`", "$"):
-    value = value.replace(char, "\\" + char)
-sys.stdout.write(f'"{value}"')
+if any(ord(char) < 32 or ord(char) == 127 for char in value):
+    raise SystemExit("Percorso con caratteri di controllo non supportato nel file .desktop")
+
+encoded = []
+for char in value:
+    if char == "\\":
+        # Exec escaping + general string escaping: una backslash letterale
+        # richiede quattro backslash nel file desktop.
+        encoded.append("\\\\\\\\")
+    elif char in {'"', "`", "$"}:
+        # Il quoting Exec richiede una backslash; il livello string la raddoppia.
+        encoded.append("\\\\" + char)
+    elif char == "%":
+        # '%' introduce i field code Exec; '%%' rappresenta il carattere letterale.
+        encoded.append("%%")
+    else:
+        encoded.append(char)
+
+sys.stdout.write('"' + "".join(encoded) + '"')
 PY
 }
 
