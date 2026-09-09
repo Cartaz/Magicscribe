@@ -14,7 +14,6 @@ import logging
 from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QPainterPath
 
-from core.geometry import rdp_simplify
 from core.models import Stroke, ToolType, Point
 
 logger = logging.getLogger(__name__)
@@ -96,7 +95,7 @@ class DrawingEngine:
         )
         painter.setCompositionMode(_SO)
         painter.setPen(pen)
-        path = DrawingEngine._smooth_path(stroke.points, tolerance=10.0)
+        path = DrawingEngine._smooth_path(stroke.points)
         painter.drawPath(path)
 
     @staticmethod
@@ -156,24 +155,36 @@ class DrawingEngine:
         ).normalized())
 
     @staticmethod
-    def _smooth_path(
-        points: list[Point], tolerance: float = 10.0,
-    ) -> QPainterPath:
+    def _smooth_path(points: list[Point]) -> QPainterPath:
+        """Costruisce un tratto smussato causale e append-stable.
+
+        Ogni vertice filtrato dipende soltanto dal campione corrente e dai due
+        precedenti. Aggiungere nuovi punti non puo' quindi cambiare alcuna parte
+        del path gia' renderizzata, evitando il movimento retroattivo prodotto
+        dalla precedente semplificazione RDP dell'intero tratto.
+        """
         path = QPainterPath()
         if not points:
             return path
-        if len(points) < 3:
-            path.moveTo(points[0].x, points[0].y)
-            for p in points[1:]:
-                path.lineTo(p.x, p.y)
+
+        path.moveTo(points[0].x, points[0].y)
+        if len(points) == 1:
             return path
-        simplified = rdp_simplify(points, tolerance)
-        if not simplified:
-            return path
-        path.moveTo(simplified[0].x, simplified[0].y)
-        for i in range(1, len(simplified) - 1):
-            xc = (simplified[i].x + simplified[i + 1].x) / 2
-            yc = (simplified[i].y + simplified[i + 1].y) / 2
-            path.quadTo(simplified[i].x, simplified[i].y, xc, yc)
-        path.lineTo(simplified[-1].x, simplified[-1].y)
+
+        previous = points[0]
+        current = points[1]
+        path.lineTo(
+            0.30 * previous.x + 0.70 * current.x,
+            0.30 * previous.y + 0.70 * current.y,
+        )
+
+        for index in range(2, len(points)):
+            older = points[index - 2]
+            previous = points[index - 1]
+            current = points[index]
+            path.lineTo(
+                0.15 * older.x + 0.30 * previous.x + 0.55 * current.x,
+                0.15 * older.y + 0.30 * previous.y + 0.55 * current.y,
+            )
+
         return path
