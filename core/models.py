@@ -29,10 +29,9 @@ class DrawingState(Enum):
 
 @dataclass(frozen=True)
 class Point:
-    """Punto nello spazio dello schermo con pressione opzionale."""
+    """Punto nello spazio dello schermo."""
     x: float
     y: float
-    pressure: float = 1.0
 
 
 @dataclass
@@ -40,14 +39,13 @@ class Stroke:
     """Tratto di disegno completato o in corso.
 
     Contiene soltanto stato attualmente configurabile e consumato dal runtime.
-    Eventuali future capacità (riempimenti, frecce, ecc.) vanno introdotte con
-    una feature completa, non come campi dormienti nel modello canonico.
+    Eventuali future capacità (pressione, riempimenti, frecce, ecc.) vanno
+    introdotte con una feature completa, non come campi dormienti nel modello.
     """
     tool_type: ToolType
     points: list[Point] = field(default_factory=list)
     color: str = "#ff0000"
     size: float = 5.0
-    visible: bool = True
 
     def is_shape(self) -> bool:
         """Restituisce True se il tratto e' una forma geometrica."""
