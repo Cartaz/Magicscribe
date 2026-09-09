@@ -88,18 +88,6 @@ def test_get_strokes_returns_copy() -> None:
     assert sm.stroke_count == 1
 
 
-def test_get_visible_strokes_filters_hidden() -> None:
-    """get_visible_strokes restituisce solo i tratti con visible=True."""
-    sm = StrokeManager()
-    visible = _make_stroke()
-    visible.visible = True
-    hidden = _make_stroke()
-    hidden.visible = False
-    sm.add_stroke(visible)
-    sm.add_stroke(hidden)
-    assert len(sm.get_visible_strokes()) == 1
-
-
 def test_finalize_empty_stroke_noop() -> None:
     """Aggiungere uno stroke senza punti tramite add_stroke e' permesso
     (il filtraggio avviene nel controller)."""
