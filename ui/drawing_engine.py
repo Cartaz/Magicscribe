@@ -10,6 +10,7 @@ rimane framework-agnostic.
 from __future__ import annotations
 
 import logging
+import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
@@ -19,7 +20,8 @@ from core.models import Point, Stroke, ToolType
 logger = logging.getLogger(__name__)
 
 _SO = QPainter.CompositionMode.CompositionMode_SourceOver
-_SMOOTH_ALPHA = 0.32
+_SMOOTH_CONTROL_SPACING = 32.0
+_SMOOTH_ALPHA = 0.28
 
 
 def _qcolor(color_str: str) -> QColor:
@@ -101,9 +103,8 @@ class DrawingEngine:
         path = DrawingEngine._smooth_path_from_filtered(filtered)
         painter.drawPath(path)
 
-        # La B-spline consolida il corpo con una breve latenza geometrica.
-        # La sola coda resta provvisoria per mantenere il tratto collegato al
-        # cursore senza permettere ai nuovi campioni di riscrivere il passato.
+        # Il corpo usa soli control point stabilizzati e quindi non cambia piu'.
+        # La coda collega la spline all'ultimo campione grezzo mentre si disegna.
         if filtered:
             tail = QPainterPath(path.currentPosition())
             raw_last = stroke.points[-1]
@@ -173,19 +174,71 @@ class DrawingEngine:
         ).normalized())
 
     @staticmethod
-    def _smooth_points(points: list[Point]) -> list[Point]:
-        """Filtro low-pass causale, forte abbastanza da attenuare gli zig-zag.
+    def _resample_smooth_controls(
+        points: list[Point],
+        spacing: float = _SMOOTH_CONTROL_SPACING,
+    ) -> list[Point]:
+        """Ricampiona la polilinea a distanza spaziale fissa e append-stable.
 
-        Ogni campione filtrato dipende soltanto dal precedente valore filtrato
-        e dal nuovo punto grezzo. Il prefisso prodotto resta quindi immutabile
-        quando arrivano campioni successivi.
+        Gli eventi mouse possono arrivare molto fitti: usare ogni evento come
+        control point rende qualunque spline quasi identica alla Penna. Qui i
+        control point vengono emessi ogni ``spacing`` pixel di lunghezza d'arco.
+        Un campione parziale finale non viene consolidato, quindi aggiungere
+        nuovi punti puo' soltanto appendere nuovi control point senza cambiare
+        quelli precedenti.
         """
         if not points:
             return []
+        if spacing <= 0:
+            return list(points)
 
-        filtered = [points[0]]
-        keep = 1.0 - _SMOOTH_ALPHA
+        sampled = [points[0]]
+        distance_since_sample = 0.0
+        previous = points[0]
+
         for current in points[1:]:
+            start_x = previous.x
+            start_y = previous.y
+            end_x = current.x
+            end_y = current.y
+            dx = end_x - start_x
+            dy = end_y - start_y
+            segment_length = math.hypot(dx, dy)
+
+            while (
+                segment_length > 0.0
+                and distance_since_sample + segment_length >= spacing
+            ):
+                needed = spacing - distance_since_sample
+                ratio = needed / segment_length
+                sample = Point(
+                    start_x + dx * ratio,
+                    start_y + dy * ratio,
+                )
+                sampled.append(sample)
+
+                start_x = sample.x
+                start_y = sample.y
+                dx = end_x - start_x
+                dy = end_y - start_y
+                segment_length = math.hypot(dx, dy)
+                distance_since_sample = 0.0
+
+            distance_since_sample += segment_length
+            previous = current
+
+        return sampled
+
+    @staticmethod
+    def _smooth_points(points: list[Point]) -> list[Point]:
+        """Crea control point spaziali e applica un low-pass causale forte."""
+        sampled = DrawingEngine._resample_smooth_controls(points)
+        if not sampled:
+            return []
+
+        filtered = [sampled[0]]
+        keep = 1.0 - _SMOOTH_ALPHA
+        for current in sampled[1:]:
             previous = filtered[-1]
             filtered.append(
                 Point(
@@ -204,13 +257,7 @@ class DrawingEngine:
 
     @staticmethod
     def _smooth_path_from_filtered(points: list[Point]) -> QPainterPath:
-        """Renderizza una B-spline cubica uniforme, locale e append-stable.
-
-        Ogni segmento usa quattro punti di controllo adiacenti. Aggiungere un
-        nuovo campione crea soltanto un nuovo segmento: quelli gia' emessi non
-        cambiano. La spline e' approssimante, quindi non attraversa ogni vertice
-        dello zig-zag e produce un andamento visibilmente piu' sinuoso.
-        """
+        """Renderizza una B-spline cubica uniforme, locale e append-stable."""
         path = QPainterPath()
         if not points:
             return path
@@ -218,8 +265,6 @@ class DrawingEngine:
             path.moveTo(points[0].x, points[0].y)
             return path
 
-        # Due duplicati iniziali fanno partire la spline esattamente dal primo
-        # campione senza introdurre dipendenze da punti futuri.
         controls = [points[0], points[0], *points]
 
         for index in range(len(controls) - 3):
