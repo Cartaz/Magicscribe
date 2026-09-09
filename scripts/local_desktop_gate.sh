@@ -144,7 +144,7 @@ stop_app_forcefully() {
 
 graceful_quit_check() {
     local id="$1"
-    printf '\nPorta il focus sul pannello MagicScribe e premi Ctrl+Shift+Q.\n'
+    printf '\nPorta il focus sul pannello MagicScribe e premi Ctrl+Q.\n'
     printf 'Dopo averlo premuto, torna qui e premi Invio...'
     IFS= read -r _
 
