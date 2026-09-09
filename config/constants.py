@@ -1,8 +1,4 @@
-"""Costanti globali dell'applicazione MagicScribe.
-
-I percorsi rispettano le directory XDG; i valori della vecchia UI QWidget sono
-mantenuti soltanto per il fallback di parita' finche' l'issue desktop e' aperta.
-"""
+"""Costanti globali dell'applicazione MagicScribe."""
 
 from __future__ import annotations
 
@@ -37,21 +33,6 @@ class PathDefaults:
     LOG_DIR: Path = _xdg_state_home() / AppMeta.ORG_NAME
     LOG_FILE: Path = LOG_DIR / "magicscribe.log"
     DESKTOP_FILE: Path = _xdg_data_home() / "applications" / f"{AppMeta.ORG_NAME}.desktop"
-
-
-class UIDefaults:
-    """Valori della UI QWidget legacy, mantenuti solo per il gate di parita'."""
-    WINDOW_MIN_WIDTH: int = 300
-    WINDOW_MAX_WIDTH: int = 340
-    WINDOW_MIN_HEIGHT: int = 500
-    CARD_PADDING: int = 12
-    CARD_MARGIN: int = 8
-    CARD_RADIUS: int = 6
-    BORDER_WIDTH: int = 1
-    BUTTON_HEIGHT: int = 30
-    STATUS_DOT_SIZE: int = 10
-    SHORTCUT_BADGE_WIDTH: int = 64
-    ANIMATION_DURATION_MS: int = 200
 
 
 class HotkeyDefaults:
