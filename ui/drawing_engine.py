@@ -19,6 +19,7 @@ from core.models import Point, Stroke, ToolType
 logger = logging.getLogger(__name__)
 
 _SO = QPainter.CompositionMode.CompositionMode_SourceOver
+_SMOOTH_ALPHA = 0.32
 
 
 def _qcolor(color_str: str) -> QColor:
@@ -100,13 +101,19 @@ class DrawingEngine:
         path = DrawingEngine._smooth_path_from_filtered(filtered)
         painter.drawPath(path)
 
-        # Il corpo del tratto e' append-stable. Solo la mezza coda finale e'
-        # provvisoria, cosi' il cursore resta collegato senza poter deformare
-        # segmenti ormai consolidati quando arrivano nuovi campioni.
-        if len(filtered) >= 2:
+        # La B-spline consolida il corpo con una breve latenza geometrica.
+        # La sola coda resta provvisoria per mantenere il tratto collegato al
+        # cursore senza permettere ai nuovi campioni di riscrivere il passato.
+        if filtered:
             tail = QPainterPath(path.currentPosition())
-            last = filtered[-1]
-            tail.quadTo(last.x, last.y, last.x, last.y)
+            raw_last = stroke.points[-1]
+            filtered_last = filtered[-1]
+            tail.quadTo(
+                filtered_last.x,
+                filtered_last.y,
+                raw_last.x,
+                raw_last.y,
+            )
             painter.drawPath(tail)
 
     @staticmethod
@@ -167,66 +174,75 @@ class DrawingEngine:
 
     @staticmethod
     def _smooth_points(points: list[Point]) -> list[Point]:
-        """Filtra causalmente i campioni senza modificare quelli gia' prodotti."""
+        """Filtro low-pass causale, forte abbastanza da attenuare gli zig-zag.
+
+        Ogni campione filtrato dipende soltanto dal precedente valore filtrato
+        e dal nuovo punto grezzo. Il prefisso prodotto resta quindi immutabile
+        quando arrivano campioni successivi.
+        """
         if not points:
             return []
-        if len(points) == 1:
-            return [points[0]]
 
-        filtered = [
-            points[0],
-            Point(
-                0.30 * points[0].x + 0.70 * points[1].x,
-                0.30 * points[0].y + 0.70 * points[1].y,
-            ),
-        ]
-        for index in range(2, len(points)):
-            older = points[index - 2]
-            previous = points[index - 1]
-            current = points[index]
+        filtered = [points[0]]
+        keep = 1.0 - _SMOOTH_ALPHA
+        for current in points[1:]:
+            previous = filtered[-1]
             filtered.append(
                 Point(
-                    0.15 * older.x + 0.30 * previous.x + 0.55 * current.x,
-                    0.15 * older.y + 0.30 * previous.y + 0.55 * current.y,
+                    keep * previous.x + _SMOOTH_ALPHA * current.x,
+                    keep * previous.y + _SMOOTH_ALPHA * current.y,
                 )
             )
         return filtered
 
     @staticmethod
     def _smooth_path(points: list[Point]) -> QPainterPath:
-        """Costruisce il corpo consolidato di un tratto Smooth.
-
-        I punti vengono filtrati causalmente e poi collegati con curve
-        quadratiche tra i midpoint consecutivi. L'aggiunta di nuovi campioni
-        appende nuovi segmenti senza cambiare quelli gia' consolidati.
-        """
+        """Costruisce il corpo consolidato del tratto Smooth."""
         return DrawingEngine._smooth_path_from_filtered(
             DrawingEngine._smooth_points(points)
         )
 
     @staticmethod
     def _smooth_path_from_filtered(points: list[Point]) -> QPainterPath:
+        """Renderizza una B-spline cubica uniforme, locale e append-stable.
+
+        Ogni segmento usa quattro punti di controllo adiacenti. Aggiungere un
+        nuovo campione crea soltanto un nuovo segmento: quelli gia' emessi non
+        cambiano. La spline e' approssimante, quindi non attraversa ogni vertice
+        dello zig-zag e produce un andamento visibilmente piu' sinuoso.
+        """
         path = QPainterPath()
         if not points:
             return path
-
-        path.moveTo(points[0].x, points[0].y)
         if len(points) == 1:
+            path.moveTo(points[0].x, points[0].y)
             return path
 
-        first_mid = QPointF(
-            (points[0].x + points[1].x) / 2,
-            (points[0].y + points[1].y) / 2,
-        )
-        path.lineTo(first_mid)
+        # Due duplicati iniziali fanno partire la spline esattamente dal primo
+        # campione senza introdurre dipendenze da punti futuri.
+        controls = [points[0], points[0], *points]
 
-        for index in range(1, len(points) - 1):
-            current = points[index]
-            following = points[index + 1]
-            next_mid = QPointF(
-                (current.x + following.x) / 2,
-                (current.y + following.y) / 2,
+        for index in range(len(controls) - 3):
+            p0, p1, p2, p3 = controls[index:index + 4]
+            b0 = QPointF(
+                (p0.x + 4 * p1.x + p2.x) / 6,
+                (p0.y + 4 * p1.y + p2.y) / 6,
             )
-            path.quadTo(current.x, current.y, next_mid.x(), next_mid.y())
+            b1 = QPointF(
+                (2 * p1.x + p2.x) / 3,
+                (2 * p1.y + p2.y) / 3,
+            )
+            b2 = QPointF(
+                (p1.x + 2 * p2.x) / 3,
+                (p1.y + 2 * p2.y) / 3,
+            )
+            b3 = QPointF(
+                (p1.x + 4 * p2.x + p3.x) / 6,
+                (p1.y + 4 * p2.y + p3.y) / 6,
+            )
+
+            if index == 0:
+                path.moveTo(b0)
+            path.cubicTo(b1, b2, b3)
 
         return path
