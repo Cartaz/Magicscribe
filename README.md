@@ -15,11 +15,21 @@ Global drawing shortcuts use the XDG Desktop Portal. The portal transport is iso
 ## Development checks
 
 ```bash
-python -m compileall -q config core ui main.py
+python scripts/verify_release_constraints.py
+python -m compileall -q config core ui scripts main.py
 pyside6-qmllint --max-warnings 0 -I ui/qml ui/qml/MagicScribe/*.qml
 python -m pytest -q
+python scripts/benchmark_renderer.py --quick
 bash -n install.sh scripts/local_desktop_gate.sh
 ```
+
+## Reproducible dependency policy
+
+`requirements.txt` and `requirements-dev.txt` are compatibility contracts: they state the dependency ranges the code is expected to support.
+
+`constraints-release.txt` selects the exact audited runtime versions used by `install.sh`. `constraints-ci.txt` extends that set with exact development/test versions used by CI. `scripts/verify_release_constraints.py` requires every direct runtime and CI dependency to have exactly one corresponding pin, and rejects stale or missing pins.
+
+Updating a dependency is therefore explicit: update its compatibility range only when needed, update the corresponding constraint pin, run the full CI matrix, and perform the local desktop gate when the change can affect Qt, QML, portals, windowing or native integration.
 
 ## Local desktop parity harness
 
@@ -38,6 +48,8 @@ The migration gate tracked in GitHub issue #6 was completed on the target deskto
 The production shell and overlay are Qt Quick only; the historical QWidget shell/overlay and its QSS theme have been removed.
 
 On a Wayland session `main.py` still forces Qt `xcb`/XWayland until native-Wayland parity is demonstrated separately. `ui/native/x11_input_shape.py` therefore remains part of the production runtime: it owns the X11 Shape input-region handling needed for reliable click-through under the current xcb/XWayland policy and is not a legacy QWidget fallback.
+
+Native Wayland support is deliberately a separate future milestone rather than a silent backend switch. Its acceptance gate must demonstrate equivalent behavior for overlay input/click-through, always-on-top semantics, global shortcuts, toolbar/floating-window interaction, multi-monitor behavior, lifecycle and memory on the target KDE/KWin desktop. Only after that parity is observed should the forced `QT_QPA_PLATFORM=xcb` policy and X11 input-shape path be removed.
 
 The floating palette intentionally uses `WindowDoesNotAcceptFocus` so it does not steal focus from the application being annotated.
 

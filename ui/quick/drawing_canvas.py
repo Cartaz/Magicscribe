@@ -73,7 +73,7 @@ class DrawingCanvas(QQuickPaintedItem):
 
     def _begin_stroke(self, position: QPointF) -> None:
         stroke = self._adapter.create_current_stroke()
-        point = self._point(position, pressure=1.0)
+        point = self._point(position)
         stroke.points.append(point)
         if stroke.is_shape():
             stroke.points.append(self._point(position))
@@ -85,7 +85,7 @@ class DrawingCanvas(QQuickPaintedItem):
         if stroke is None:
             return
 
-        point = self._point(position, pressure=1.0)
+        point = self._point(position)
         if stroke.is_shape():
             stroke.points[-1] = point
         else:
@@ -97,7 +97,7 @@ class DrawingCanvas(QQuickPaintedItem):
         if stroke is None:
             return
 
-        point = self._point(position, pressure=1.0)
+        point = self._point(position)
         if stroke.is_shape():
             stroke.points[-1] = point
         else:
@@ -113,5 +113,5 @@ class DrawingCanvas(QQuickPaintedItem):
             self.update()
 
     @staticmethod
-    def _point(position: QPointF, pressure: float = 1.0) -> Point:
-        return Point(x=position.x(), y=position.y(), pressure=pressure)
+    def _point(position: QPointF) -> Point:
+        return Point(x=position.x(), y=position.y())

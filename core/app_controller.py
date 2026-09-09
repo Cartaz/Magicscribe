@@ -1,8 +1,8 @@
 """Controller principale dell'applicazione MagicScribe.
 
 Orchestra i moduli core e fornisce l'interfaccia pubblica
-che il livello UI utilizza per interagire con la logica di business.
-Non importa mai moduli Qt (§5.1.4b).
+che il livello UI utilizza per interagire con la logica applicativa.
+Non importa mai moduli Qt.
 """
 
 from __future__ import annotations
@@ -111,9 +111,6 @@ class AppController:
             tool_type=config.tool_type,
             color=config.color,
             size=config.size,
-            fill_color=config.fill_color,
-            arrow_size=config.arrow_size,
-            arrow_type=config.arrow_type,
         )
 
     def finalize_stroke(self, stroke: Stroke) -> None:

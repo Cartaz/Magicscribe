@@ -33,10 +33,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libegl1 libgl1 libx11-6 libxext6
 
+      - name: Verify release constraints
+        run: python scripts/verify_release_constraints.py
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -r requirements-dev.txt
+          python -m pip install \
+            -r requirements.txt \
+            -r requirements-dev.txt \
+            -c constraints-ci.txt
 
       - name: Verify PySide6, Qt and D-Bus runtime
         run: |

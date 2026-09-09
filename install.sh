@@ -56,10 +56,14 @@ else
 fi
 
 # 2. Dipendenze
-echo "[2/7] Installazione dipendenze..."
+echo "[2/7] Installazione dipendenze riproducibili..."
+"${VENV_DIR}/bin/python" "${SCRIPT_DIR}/scripts/verify_release_constraints.py"
 "${VENV_DIR}/bin/python" -m pip install --upgrade pip --quiet
-"${VENV_DIR}/bin/python" -m pip install -r "${SCRIPT_DIR}/requirements.txt" --quiet
-echo "     Dipendenze installate."
+"${VENV_DIR}/bin/python" -m pip install \
+    -r "${SCRIPT_DIR}/requirements.txt" \
+    -c "${SCRIPT_DIR}/constraints-release.txt" \
+    --quiet
+echo "     Dipendenze release installate dai pin verificati."
 
 # 3. Verifica runtime Qt/PySide6 + D-Bus + prerequisiti xcb/X11
 echo "[3/7] Verifica runtime PySide6/Qt, D-Bus e xcb/X11..."

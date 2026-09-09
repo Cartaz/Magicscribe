@@ -1,7 +1,7 @@
 """Motore di rendering dei tratti di disegno.
 
 Responsabile della resa grafica dei tratti su un QPainter,
-gestendo i diversi tipi di strumento e le relative opzioni.
+gestendo i diversi tipi di strumento supportati dal runtime.
 
 Questo modulo risiede in ui/ perche' importa PySide6; il livello core
 rimane framework-agnostic.
@@ -10,12 +10,9 @@ rimane framework-agnostic.
 from __future__ import annotations
 
 import logging
-import math
 
 from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import (
-    QPainter, QPen, QBrush, QColor, QPainterPath, QPolygonF,
-)
+from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QPainterPath
 
 from core.geometry import rdp_simplify
 from core.models import Stroke, ToolType, Point
@@ -89,8 +86,6 @@ class DrawingEngine:
         for pt in stroke.points[1:]:
             path.lineTo(pt.x, pt.y)
         painter.drawPath(path)
-        if stroke.arrow_size > 0 and len(stroke.points) >= 2:
-            DrawingEngine._draw_arrow(painter, stroke, color)
 
     @staticmethod
     def _render_smooth(painter: QPainter, stroke: Stroke) -> None:
@@ -141,6 +136,7 @@ class DrawingEngine:
         color = _qcolor(stroke.color)
         painter.setCompositionMode(_SO)
         painter.setPen(QPen(QBrush(color), stroke.size, Qt.PenStyle.SolidLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         p1, p2 = stroke.points[0], stroke.points[-1]
         painter.drawRect(QRectF(
             QPointF(p1.x, p1.y), QPointF(p2.x, p2.y),
@@ -153,34 +149,11 @@ class DrawingEngine:
         color = _qcolor(stroke.color)
         painter.setCompositionMode(_SO)
         painter.setPen(QPen(QBrush(color), stroke.size, Qt.PenStyle.SolidLine))
-        if stroke.fill_color:
-            painter.setBrush(QBrush(_qcolor(stroke.fill_color)))
-        else:
-            painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         p1, p2 = stroke.points[0], stroke.points[-1]
         painter.drawEllipse(QRectF(
             QPointF(p1.x, p1.y), QPointF(p2.x, p2.y),
         ).normalized())
-
-    @staticmethod
-    def _draw_arrow(
-        painter: QPainter, stroke: Stroke, color: QColor,
-    ) -> None:
-        p_end = stroke.points[-1]
-        p_prev = stroke.points[-2] if len(stroke.points) >= 2 else stroke.points[-1]
-        angle = math.atan2(p_end.y - p_prev.y, p_end.x - p_prev.x)
-        arrow_len = stroke.size * stroke.arrow_size * 3
-        p1x = p_end.x - arrow_len * math.cos(angle - math.pi / 6)
-        p1y = p_end.y - arrow_len * math.sin(angle - math.pi / 6)
-        p2x = p_end.x - arrow_len * math.cos(angle + math.pi / 6)
-        p2y = p_end.y - arrow_len * math.sin(angle + math.pi / 6)
-        painter.setBrush(QBrush(color))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawPolygon(QPolygonF([
-            QPointF(p_end.x, p_end.y),
-            QPointF(p1x, p1y),
-            QPointF(p2x, p2y),
-        ]))
 
     @staticmethod
     def _smooth_path(

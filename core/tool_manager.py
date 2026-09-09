@@ -72,7 +72,6 @@ class ToolManager:
                 tool_type=ToolType.CIRCLE,
                 color=self._settings.get("circle_color"),
                 size=self._settings.get("circle_size"),
-                fill_color=None,
             ),
             ToolType.SMOOTH: ToolConfig(
                 tool_type=ToolType.SMOOTH,
