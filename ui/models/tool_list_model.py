@@ -10,7 +10,8 @@ from core.models import TOOL_SPECS
 class ToolListModel(QAbstractListModel):
     ToolIdRole = Qt.ItemDataRole.UserRole + 1
     DisplayLabelRole = Qt.ItemDataRole.UserRole + 2
-    SupportsColorRole = Qt.ItemDataRole.UserRole + 3
+    GlyphRole = Qt.ItemDataRole.UserRole + 3
+    SupportsColorRole = Qt.ItemDataRole.UserRole + 4
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
         return 0 if parent.isValid() else len(TOOL_SPECS)
@@ -23,6 +24,8 @@ class ToolListModel(QAbstractListModel):
             return spec.key
         if role in (self.DisplayLabelRole, Qt.ItemDataRole.DisplayRole):
             return spec.label
+        if role == self.GlyphRole:
+            return spec.glyph
         if role == self.SupportsColorRole:
             return spec.supports_color
         return None
@@ -31,5 +34,6 @@ class ToolListModel(QAbstractListModel):
         return {
             self.ToolIdRole: b"toolId",
             self.DisplayLabelRole: b"displayLabel",
+            self.GlyphRole: b"glyph",
             self.SupportsColorRole: b"supportsColor",
         }
