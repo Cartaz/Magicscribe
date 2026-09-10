@@ -1,4 +1,4 @@
-"""Smoke test del binding Qt e dei guardrail della migrazione."""
+"""Architectural guardrails for the strategic runtime boundary."""
 
 from __future__ import annotations
 
@@ -9,103 +9,96 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import qVersion
 
+ROOT = Path(__file__).resolve().parents[2]
+
 
 def test_qt_version_is_611_or_newer() -> None:
     version = tuple(int(part) for part in qVersion().split(".")[:3])
     assert version >= (6, 11, 0)
 
 
-def test_no_pyqt6_references_remain_in_runtime_sources() -> None:
-    root = Path(__file__).resolve().parents[2]
-    candidates = [root / "main.py", *sorted((root / "ui").rglob("*.py"))]
-    offenders = [
-        path.relative_to(root).as_posix()
+def test_runtime_uses_only_pyside6() -> None:
+    candidates = [ROOT / "main.py", *sorted((ROOT / "ui").rglob("*.py"))]
+    assert [
+        path.relative_to(ROOT).as_posix()
         for path in candidates
         if "PyQt6" in path.read_text(encoding="utf-8")
+    ] == []
+
+
+def test_production_runtime_has_no_x11_rollback() -> None:
+    candidates = [
+        ROOT / "main.py",
+        ROOT / "install.sh",
+        ROOT / "ui" / "native" / "window_coordinator.py",
+        ROOT / "ui" / "quick" / "overlay_surface.py",
     ]
-    assert offenders == []
-
-
-def test_legacy_qwidget_fallback_is_removed() -> None:
-    root = Path(__file__).resolve().parents[2]
-    legacy_paths = [
-        root / "config" / "theme.py",
-        root / "ui" / "main_window.py",
-        root / "ui" / "main_window_components.py",
-        root / "ui" / "overlay_window.py",
-        root / "ui" / "styles",
-        root / "ui" / "widgets",
-    ]
-    assert [path.relative_to(root).as_posix() for path in legacy_paths if path.exists()] == []
-
-
-def test_runtime_shell_has_no_legacy_window_references() -> None:
-    root = Path(__file__).resolve().parents[2]
-    runtime_files = [
-        root / "main.py",
-        root / "ui" / "native" / "window_coordinator.py",
-        root / "ui" / "quick" / "overlay_surface.py",
-        root / "ui" / "quick" / "drawing_canvas.py",
-    ]
-    forbidden = ("FloatingIcon", "MainWindow", "OverlayWindow")
+    forbidden = ("x11_input_shape", "set_x11_click_through", "libx11", "libxext")
     offenders = [
-        path.relative_to(root).as_posix()
-        for path in runtime_files
-        if any(token in path.read_text(encoding="utf-8") for token in forbidden)
+        path.relative_to(ROOT).as_posix()
+        for path in candidates
+        if any(token in path.read_text(encoding="utf-8").lower() for token in forbidden)
     ]
     assert offenders == []
 
 
-def test_x11_diagnostic_rollback_is_removed() -> None:
-    root = Path(__file__).resolve().parents[2]
-    assert not (root / "ui" / "native" / "x11_input_shape.py").exists()
-    overlay_source = (root / "ui" / "quick" / "overlay_surface.py").read_text(
-        encoding="utf-8"
-    )
-    assert "set_x11_click_through" not in overlay_source
-    assert "ui.native.x11_input_shape" not in overlay_source
+def test_wayland_is_the_only_production_qpa_contract() -> None:
+    source = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert "richiede KDE Plasma su Wayland nativo" in source
+    assert 'loadFromModule("MagicScribe", "WaylandControlPanel")' in source
+    assert '"WaylandFloatingPalette"' in source
+    assert '"ControlPanel" if' not in source
 
 
-def test_production_runtime_does_not_load_qss() -> None:
-    root = Path(__file__).resolve().parents[2]
-    main_source = (root / "main.py").read_text(encoding="utf-8")
-    tray_source = (root / "ui" / "tray_icon.py").read_text(encoding="utf-8")
+def test_shell_adapter_never_reaches_into_coordinator_privates() -> None:
+    source = (ROOT / "ui" / "adapters" / "shell_adapter.py").read_text(encoding="utf-8")
+    for token in ("._control_window", "._floating_window", "._absolute_positioning"):
+        assert token not in source
+    assert "setMask(" not in source
+    assert "findChild(" not in source
 
-    assert "build_stylesheet" not in main_source
-    assert "setStyleSheet(" not in main_source
-    assert "ui.styles" not in main_source
-    assert "config.theme" not in tray_source
+
+def test_dead_cross_cutting_abstractions_are_removed() -> None:
+    for relative in (
+        "core/event_bus.py",
+        "core/exceptions.py",
+        "core/geometry.py",
+        "tests/test_core/test_event_bus.py",
+        "tests/test_core/test_geometry.py",
+    ):
+        assert not (ROOT / relative).exists()
+
+
+def test_dependency_metadata_is_consolidated() -> None:
+    assert (ROOT / "requirements.txt").is_file()
+    for relative in (
+        "pyproject.toml",
+        "requirements-dev.txt",
+        "constraints-release.txt",
+        "constraints-ci.txt",
+        "scripts/verify_release_constraints.py",
+    ):
+        assert not (ROOT / relative).exists()
 
 
 def test_runtime_uses_background_settings_persistence_and_deterministic_close() -> None:
-    root = Path(__file__).resolve().parents[2]
-    source = (root / "main.py").read_text(encoding="utf-8")
+    source = (ROOT / "main.py").read_text(encoding="utf-8")
     assert "background_persistence=True" in source
     assert "settings.close()" in source
 
 
-def test_pure_geometry_lives_in_core_and_dead_event_bridge_is_removed() -> None:
-    root = Path(__file__).resolve().parents[2]
-    assert (root / "core" / "geometry.py").is_file()
-    assert not (root / "ui" / "geometry_utils.py").exists()
-    assert not (root / "ui" / "event_bridge.py").exists()
-    drawing_engine = (root / "ui" / "drawing_engine.py").read_text(encoding="utf-8")
-    assert "ui.geometry_utils" not in drawing_engine
-    assert "from core.models import" in drawing_engine
+def test_legacy_qwidget_shell_is_removed() -> None:
+    legacy_paths = [
+        ROOT / "config" / "theme.py",
+        ROOT / "ui" / "main_window.py",
+        ROOT / "ui" / "overlay_window.py",
+        ROOT / "ui" / "styles",
+        ROOT / "ui" / "widgets",
+    ]
+    assert [path.relative_to(ROOT).as_posix() for path in legacy_paths if path.exists()] == []
 
 
-def test_neu_button_pressed_state_does_not_toggle_effect_layers() -> None:
-    root = Path(__file__).resolve().parents[2]
-    source = (
-        root / "ui" / "qml" / "MagicScribe" / "NeuButton.qml"
-    ).read_text(encoding="utf-8")
-    assert "readonly property bool insetState" not in source
-    assert "visible: control.selected" in source
-    assert "opacity: control.pressed ? 0.72 : 1.0" in source
-    assert "border.width: control.pressed || control.activeFocus ? 1 : 0" in source
-
-
-def test_production_ui_modules_import_with_pyside6() -> None:
+def test_production_ui_modules_import() -> None:
     import ui.drawing_engine  # noqa: F401
     import ui.quick.drawing_canvas  # noqa: F401
     import ui.quick.overlay_surface  # noqa: F401

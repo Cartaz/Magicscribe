@@ -1,10 +1,4 @@
-"""Gestione delle impostazioni utente persistenti.
-
-Le impostazioni sono salvate in JSON nella directory XDG_CONFIG_HOME.
-Supporta load/save/get/set/reset con validazione difensiva e fallback ai default.
-Nel runtime la persistenza puo' usare un writer seriale in background, cosi'
-le mutazioni provenienti dalla UI non eseguono I/O sul GUI thread.
-"""
+"""Gestione persistente e validata delle impostazioni utente."""
 
 from __future__ import annotations
 
@@ -13,41 +7,31 @@ import json
 import logging
 from pathlib import Path
 from threading import Lock
-from typing import Any, Callable, Optional
+from typing import Any
 
-from config.constants import PathDefaults, ToolDefaults
+from config.constants import PathDefaults
+from core.models import TOOL_SPECS
 
 logger = logging.getLogger(__name__)
 
 _DEFAULTS: dict[str, Any] = {
-    "pen_color": ToolDefaults.PEN_COLOR,
-    "pen_size": ToolDefaults.PEN_SIZE,
-    "eraser_size": ToolDefaults.ERASER_SIZE,
-    "line_color": ToolDefaults.LINE_COLOR,
-    "line_size": ToolDefaults.LINE_SIZE,
-    "rect_color": ToolDefaults.RECT_COLOR,
-    "rect_size": ToolDefaults.RECT_SIZE,
-    "circle_color": ToolDefaults.CIRCLE_COLOR,
-    "circle_size": ToolDefaults.CIRCLE_SIZE,
-    "smooth_color": ToolDefaults.SMOOTH_COLOR,
-    "smooth_size": ToolDefaults.SMOOTH_SIZE,
     "show_control_on_start": True,
     "last_tool": "pen",
 }
+for _spec in TOOL_SPECS:
+    _DEFAULTS[_spec.size_key] = _spec.default_size
+    if _spec.color_key is not None:
+        _DEFAULTS[_spec.color_key] = _spec.default_color
 
-_COLOR_KEYS = {
-    "pen_color", "line_color", "rect_color", "circle_color", "smooth_color",
-}
-_SIZE_KEYS = {
-    "pen_size", "eraser_size", "line_size", "rect_size", "circle_size",
-    "smooth_size",
-}
-_ALLOWED_TOOLS = {"pen", "eraser", "line", "rect", "circle", "smooth"}
+_COLOR_KEYS = frozenset(
+    spec.color_key for spec in TOOL_SPECS if spec.color_key is not None
+)
+_SIZE_KEYS = frozenset(spec.size_key for spec in TOOL_SPECS)
+_ALLOWED_TOOLS = frozenset(spec.key for spec in TOOL_SPECS)
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 
 
 def _normalize_color(value: Any) -> tuple[bool, Any]:
-    """Valida i formati colore gia' supportati dal DrawingEngine."""
     if not isinstance(value, str):
         return False, value
 
@@ -78,7 +62,6 @@ def _normalize_color(value: Any) -> tuple[bool, Any]:
 
 
 def _normalize_value(key: str, value: Any) -> tuple[bool, Any]:
-    """Valida e normalizza un valore di configurazione senza dipendere da Qt."""
     if key in _COLOR_KEYS:
         return _normalize_color(value)
 
@@ -105,18 +88,16 @@ def _normalize_value(key: str, value: Any) -> tuple[bool, Any]:
 
 
 class Settings:
-    """Gestore impostazioni utente con persistenza JSON."""
+    """Store JSON con validazione e persistenza seriale opzionale in background."""
 
     def __init__(
         self,
-        on_change: Optional[Callable[[str, Any], None]] = None,
         path: Path | None = None,
         *,
         background_persistence: bool = False,
     ) -> None:
         self._data: dict[str, Any] = dict(_DEFAULTS)
-        self._path: Path = path if path is not None else PathDefaults.SETTINGS_FILE
-        self._on_change: Optional[Callable[[str, Any], None]] = on_change
+        self._path = path if path is not None else PathDefaults.SETTINGS_FILE
         self._writer_lock = Lock()
         self._pending_snapshot: dict[str, Any] | None = None
         self._writer_running = False
@@ -142,16 +123,15 @@ class Settings:
                     logger.debug("Chiave impostazione obsoleta/sconosciuta: %s", key)
                     continue
                 valid, normalized = _normalize_value(key, value)
-                if not valid:
+                if valid:
+                    self._data[key] = normalized
+                else:
                     logger.warning("Valore non valido per '%s': %r; uso il default", key, value)
-                    continue
-                self._data[key] = normalized
             logger.info("Impostazioni caricate da %s", self._path)
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Errore caricamento impostazioni: %s", exc)
 
     def save(self) -> None:
-        """Flush sincrono esplicito; il runtime non lo usa nell'event loop."""
         if self._executor is not None:
             self._queue_save()
             self.flush()
@@ -160,10 +140,8 @@ class Settings:
 
     def flush(self) -> None:
         executor = self._executor
-        if executor is None:
-            return
-        marker = executor.submit(lambda: None)
-        marker.result()
+        if executor is not None:
+            executor.submit(lambda: None).result()
 
     def close(self) -> None:
         executor = self._executor
@@ -201,13 +179,10 @@ class Settings:
         if not valid:
             logger.warning("Valore non valido per '%s': %r", key, value)
             return False
-        old = self._data.get(key)
-        if old == normalized:
+        if self._data.get(key) == normalized:
             return True
         self._data[key] = normalized
         self._queue_save()
-        if self._on_change:
-            self._on_change(key, normalized)
         return True
 
     def reset(self) -> None:

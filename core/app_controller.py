@@ -1,112 +1,135 @@
-"""Controller principale dell'applicazione MagicScribe.
-
-Orchestra i moduli core e fornisce l'interfaccia pubblica
-che il livello UI utilizza per interagire con la logica applicativa.
-Non importa mai moduli Qt.
-"""
+"""Controller applicativo: unico boundary mutabile esposto alla UI."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 import logging
+from typing import Callable
 
-from core.models import ToolType, DrawingState, AppState, Stroke, ToolConfig
+from config.settings import Settings
+from core.models import AppState, DrawingState, Stroke, ToolConfig, ToolType
 from core.stroke_manager import StrokeManager
 from core.tool_manager import ToolManager
-from core.event_bus import event_bus
-from config.settings import Settings
-from config.constants import ToolDefaults
 
 logger = logging.getLogger(__name__)
+Listener = Callable[[], None]
 
 
 class AppController:
-    """Controller principale dell'applicazione.
-
-    Espone metodi tipizzati per il livello UI e coordina i proprietari
-    canonici dello stato applicativo.
-    """
+    """Possiede stato e workflow applicativi; il core non importa Qt."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._stroke_manager = StrokeManager(
-            max_depth=ToolDefaults.UNDO_MAX_DEPTH
-        )
-        self._tool_manager = ToolManager(settings)
+        self._strokes = StrokeManager()
+        self._tools = ToolManager(settings)
         self._state = AppState()
-
-    # ── Proprieta' ────────────────────────────────────────────────────────
+        self._drawing_listeners: list[Listener] = []
+        self._visibility_listeners: list[Listener] = []
+        self._history_listeners: list[Listener] = []
+        self._tool_listeners: list[Listener] = []
+        self._tool_config_listeners: list[Listener] = []
 
     @property
     def state(self) -> AppState:
-        """Stato globale dell'applicazione (sola lettura)."""
+        """Snapshot immutabile dello stato applicativo."""
         return self._state
 
-    @property
-    def stroke_manager(self) -> StrokeManager:
-        """Gestore cronologia tratti."""
-        return self._stroke_manager
+    @staticmethod
+    def _subscribe(bucket: list[Listener], listener: Listener) -> None:
+        if listener not in bucket:
+            bucket.append(listener)
 
-    @property
-    def tool_manager(self) -> ToolManager:
-        """Gestore strumenti."""
-        return self._tool_manager
+    @staticmethod
+    def _unsubscribe(bucket: list[Listener], listener: Listener) -> None:
+        if listener in bucket:
+            bucket.remove(listener)
 
-    @property
-    def settings(self) -> Settings:
-        """Gestore impostazioni."""
-        return self._settings
+    @staticmethod
+    def _notify(bucket: list[Listener]) -> None:
+        for listener in tuple(bucket):
+            try:
+                listener()
+            except Exception:
+                logger.exception("Listener applicativo fallito: %r", listener)
 
-    # ── Azioni di disegno ─────────────────────────────────────────────────
+    def add_drawing_listener(self, listener: Listener) -> None:
+        self._subscribe(self._drawing_listeners, listener)
+
+    def remove_drawing_listener(self, listener: Listener) -> None:
+        self._unsubscribe(self._drawing_listeners, listener)
+
+    def add_visibility_listener(self, listener: Listener) -> None:
+        self._subscribe(self._visibility_listeners, listener)
+
+    def remove_visibility_listener(self, listener: Listener) -> None:
+        self._unsubscribe(self._visibility_listeners, listener)
+
+    def add_history_listener(self, listener: Listener) -> None:
+        self._subscribe(self._history_listeners, listener)
+
+    def remove_history_listener(self, listener: Listener) -> None:
+        self._unsubscribe(self._history_listeners, listener)
+
+    def add_tool_listener(self, listener: Listener) -> None:
+        self._subscribe(self._tool_listeners, listener)
+
+    def remove_tool_listener(self, listener: Listener) -> None:
+        self._unsubscribe(self._tool_listeners, listener)
+
+    def add_tool_config_listener(self, listener: Listener) -> None:
+        self._subscribe(self._tool_config_listeners, listener)
+
+    def remove_tool_config_listener(self, listener: Listener) -> None:
+        self._unsubscribe(self._tool_config_listeners, listener)
 
     def toggle_drawing(self) -> None:
-        """Attiva/disattiva la modalita' disegno."""
-        if self._state.drawing_state == DrawingState.INACTIVE:
-            self._state.drawing_state = DrawingState.ACTIVE
-            logger.info("Disegno ATTIVATO")
-        else:
-            self._state.drawing_state = DrawingState.INACTIVE
-            logger.info("Disegno DISATTIVATO")
-        event_bus.emit(
-            "drawing_toggled", active=self.is_drawing_active(),
+        next_state = (
+            DrawingState.ACTIVE
+            if self._state.drawing_state is DrawingState.INACTIVE
+            else DrawingState.INACTIVE
         )
+        self._state = replace(self._state, drawing_state=next_state)
+        self._notify(self._drawing_listeners)
 
     def toggle_visibility(self) -> None:
-        """Mostra/nasconde le annotazioni."""
-        self._state.annotations_visible = not self._state.annotations_visible
-        logger.info(
-            "Visibilita' annotazioni: %s", self._state.annotations_visible,
+        self._state = replace(
+            self._state,
+            annotations_visible=not self._state.annotations_visible,
         )
-        event_bus.emit(
-            "visibility_toggled", visible=self._state.annotations_visible,
-        )
+        self._notify(self._visibility_listeners)
 
     def clear_screen(self) -> None:
-        """Cancella tutte le annotazioni dallo schermo."""
-        self._stroke_manager.clear_all()
+        if self._strokes.clear_all():
+            self._notify(self._history_listeners)
 
     def undo(self) -> None:
-        """Annulla l'ultimo tratto."""
-        self._stroke_manager.undo()
+        if self._strokes.undo() is not None:
+            self._notify(self._history_listeners)
 
     def redo(self) -> None:
-        """Ripristina l'ultimo tratto annullato."""
-        self._stroke_manager.redo()
-
-    # ── Query di stato ────────────────────────────────────────────────────
+        if self._strokes.redo() is not None:
+            self._notify(self._history_listeners)
 
     def is_drawing_active(self) -> bool:
-        """Se la modalita' disegno e' attiva."""
-        return self._state.drawing_state != DrawingState.INACTIVE
+        return self._state.drawing_state is DrawingState.ACTIVE
 
     def is_visible(self) -> bool:
-        """Se le annotazioni sono visibili."""
         return self._state.annotations_visible
 
-    # ── Creazione tratti ──────────────────────────────────────────────────
+    def can_undo(self) -> bool:
+        return self._strokes.can_undo
+
+    def can_redo(self) -> bool:
+        return self._strokes.can_redo
+
+    def stroke_count(self) -> int:
+        return self._strokes.stroke_count
+
+    def strokes_snapshot(self) -> list[Stroke]:
+        return self._strokes.get_strokes()
 
     def create_stroke(self, tool_type: ToolType) -> Stroke:
-        """Crea un nuovo tratto con la configurazione corrente dello strumento."""
-        config = self._tool_manager.config_for(tool_type)
+        config = self._tools.config_for(tool_type)
         return Stroke(
             tool_type=config.tool_type,
             color=config.color,
@@ -114,23 +137,26 @@ class AppController:
         )
 
     def finalize_stroke(self, stroke: Stroke) -> None:
-        """Aggiunge un tratto completato alla cronologia."""
-        if stroke.points:
-            self._stroke_manager.add_stroke(stroke)
-
-    # ── Selezione strumento ───────────────────────────────────────────────
+        if not stroke.points:
+            return
+        self._strokes.add_stroke(stroke)
+        self._notify(self._history_listeners)
 
     def set_tool(self, tool_type: ToolType) -> None:
-        """Seleziona uno strumento di disegno.
+        if self._tools.set_tool(tool_type):
+            self._notify(self._tool_listeners)
+            self._notify(self._tool_config_listeners)
 
-        ToolManager e' l'unico proprietario canonico dello strumento corrente.
-        """
-        self._tool_manager.set_tool(tool_type)
+    def set_tool_color(self, color: str) -> None:
+        if self._tools.set_color(self.get_current_tool(), color):
+            self._notify(self._tool_config_listeners)
+
+    def set_tool_size(self, size: float) -> None:
+        if self._tools.set_size(self.get_current_tool(), size):
+            self._notify(self._tool_config_listeners)
 
     def get_current_tool(self) -> ToolType:
-        """Restituisce lo strumento corrente."""
-        return self._tool_manager.current_tool()
+        return self._tools.current_tool()
 
     def get_current_config(self) -> ToolConfig:
-        """Restituisce la configurazione dello strumento corrente."""
-        return self._tool_manager.current_config()
+        return self._tools.current_config()

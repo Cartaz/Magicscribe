@@ -132,15 +132,6 @@ class OverlaySurface:
             len(self._views),
         )
 
-    def ensure_z_order(self) -> None:
-        if _is_native_wayland():
-            # Lo stacking e' parte del ruolo layer-shell e non va combattuto
-            # con raise/lower delle normali top-level.
-            return
-        for view in self._views:
-            if view.window.isVisible():
-                view.window.lower()
-
     def shutdown(self) -> None:
         self._shown = False
         self._unbind_screen_signals()
@@ -154,9 +145,7 @@ class OverlaySurface:
                 if view.screen is None:
                     continue
                 geometry = view.screen.geometry()
-                view.canvas.set_global_origin(
-                    QPointF(geometry.x(), geometry.y())
-                )
+                view.canvas.set_global_origin(QPointF(geometry.x(), geometry.y()))
                 self._sync_canvas_size(view)
             return
 

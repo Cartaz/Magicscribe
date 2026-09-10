@@ -4,8 +4,6 @@ import org.kde.layershell 1.0 as LayerShell
 ControlPanel {
     id: root
 
-    layerShellPlacement: true
-    layerShellFullscreen: true
     flags: Qt.FramelessWindowHint
 
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop

@@ -1,1 +1,0 @@
-"""Test automatizzati per MagicScribe."""

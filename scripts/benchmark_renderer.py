@@ -7,6 +7,9 @@ introdurre una cache dei tratti committed, evitando ottimizzazioni speculative.
 
 from __future__ import annotations
 
+# The repository root must be inserted before importing project modules.
+# ruff: noqa: E402
+
 import argparse
 import json
 from pathlib import Path
