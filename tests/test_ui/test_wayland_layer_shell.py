@@ -78,13 +78,37 @@ def test_wayland_control_drag_moves_item_inside_stationary_surface() -> None:
     assert "pressGlobalY" not in wayland
 
 
-def test_floating_layer_shell_drag_still_uses_margins() -> None:
+def test_wayland_floating_drag_moves_item_inside_stationary_surface() -> None:
     floating = _source("FloatingPalette.qml")
+    wayland = _source("WaylandFloatingPalette.qml")
+    shell_adapter = (ROOT / "ui" / "adapters" / "shell_adapter.py").read_text(
+        encoding="utf-8"
+    )
 
-    assert "moveLayerShellBy" in floating
-    assert "xAxis.onActiveValueChanged" in floating
-    assert "yAxis.onActiveValueChanged" in floating
-    assert "active && !root.layerShellPlacement" in floating
+    assert "layerShellFullscreen: true" in wayland
+    assert "LayerShell.Window.AnchorTop" in wayland
+    assert "LayerShell.Window.AnchorBottom" in wayland
+    assert "LayerShell.Window.AnchorLeft" in wayland
+    assert "LayerShell.Window.AnchorRight" in wayland
+    assert "LayerShell.Window.margins.left: 0" in wayland
+    assert "LayerShell.Window.margins.top: 0" in wayland
+
+    assert "id: paletteHost" in floating
+    assert "target: root.layerShellFullscreen ? paletteHost : null" in floating
+    assert "root.shellAdapter.set_floating_input_region(" in floating
+    assert "onXChanged: root.syncLayerShellInputRegion()" in floating
+    assert "onYChanged: root.syncLayerShellInputRegion()" in floating
+    assert "root.shellAdapter.controlPanelX" in floating
+    assert "root.shellAdapter.controlPanelY" in floating
+    assert "def set_floating_input_region(" in shell_adapter
+    assert "def controlPanelX(" in shell_adapter
+    assert "def controlPanelY(" in shell_adapter
+
+    # Never move the layer-surface itself from pointer-local coordinates.
+    assert "setWaylandDragMargins" not in wayland
+    assert "moveLayerShellBy" not in floating
+    assert "xAxis.onActiveValueChanged" not in floating
+    assert "yAxis.onActiveValueChanged" not in floating
 
 
 def test_qmldir_exports_wayland_components() -> None:
