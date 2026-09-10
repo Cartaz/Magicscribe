@@ -25,11 +25,12 @@ def test_wayland_shell_surfaces_are_stationary_overlay_layers() -> None:
     floating = _source("WaylandFloatingPalette.qml")
     for source in (control, floating):
         assert "LayerShell.Window.LayerOverlay" in source
-        assert "layerShellFullscreen: true" in source
         for anchor in ("AnchorTop", "AnchorBottom", "AnchorLeft", "AnchorRight"):
             assert f"LayerShell.Window.{anchor}" in source
         for side in ("left", "top", "right", "bottom"):
             assert f"LayerShell.Window.margins.{side}: 0" in source
+        assert "layerShellPlacement" not in source
+        assert "layerShellFullscreen" not in source
     assert "KeyboardInteractivityOnDemand" in control
     assert "KeyboardInteractivityNone" in floating
 
@@ -37,22 +38,29 @@ def test_wayland_shell_surfaces_are_stationary_overlay_layers() -> None:
 def test_control_drag_moves_only_the_internal_host() -> None:
     source = _source("ControlPanel.qml")
     assert "id: toolbarHost" in source
-    assert "target: root.layerShellFullscreen ? toolbarHost : null" in source
+    assert "target: toolbarHost" in source
     assert "root.shellAdapter.set_control_input_region(" in source
     assert "onXChanged: root.syncLayerShellInputRegion()" in source
     assert "onYChanged: root.syncLayerShellInputRegion()" in source
+    assert "startSystemMove" not in source
+    assert "layerShellPlacement" not in source
+    assert "layerShellFullscreen" not in source
+    assert "layerShellMargin" not in source
     assert "LayerShell.Window.margins" not in source
 
 
 def test_floating_drag_and_minimize_restore_use_internal_coordinates() -> None:
     source = _source("FloatingPalette.qml")
     assert "id: paletteHost" in source
-    assert "target: root.layerShellFullscreen ? paletteHost : null" in source
+    assert "target: paletteHost" in source
     assert "root.shellAdapter.set_floating_input_region(" in source
     assert "root.shellAdapter.controlLogoCenterX" in source
     assert "root.shellAdapter.controlLogoCenterY" in source
     assert "- paletteHost.width / 2" in source
     assert "- paletteHost.height / 2" in source
+    assert "startSystemMove" not in source
+    assert "layerShellPlacement" not in source
+    assert "layerShellFullscreen" not in source
     assert "LayerShell.Window.margins" not in source
 
 
