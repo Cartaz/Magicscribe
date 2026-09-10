@@ -1,10 +1,19 @@
-"""Read-only Qt model derived from the canonical tool specifications."""
+"""Read-only QML presentation model derived from canonical domain tools."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
 
-from core.models import TOOL_SPECS
+from core.models import TOOL_SPECS, ToolType
+
+_PRESENTATION: dict[ToolType, tuple[str, str]] = {
+    ToolType.PEN: ("Penna", "P"),
+    ToolType.ERASER: ("Gomma", "G"),
+    ToolType.LINE: ("Linea", "/"),
+    ToolType.RECT: ("Rett.", "[ ]"),
+    ToolType.CIRCLE: ("Cerchio", "O"),
+    ToolType.SMOOTH: ("Smuss.", "~"),
+}
 
 
 class ToolListModel(QAbstractListModel):
@@ -20,12 +29,13 @@ class ToolListModel(QAbstractListModel):
         if not index.isValid() or not 0 <= index.row() < len(TOOL_SPECS):
             return None
         spec = TOOL_SPECS[index.row()]
+        label, glyph = _PRESENTATION[spec.tool_type]
         if role == self.ToolIdRole:
             return spec.key
         if role in (self.DisplayLabelRole, Qt.ItemDataRole.DisplayRole):
-            return spec.label
+            return label
         if role == self.GlyphRole:
-            return spec.glyph
+            return glyph
         if role == self.SupportsColorRole:
             return spec.supports_color
         return None
