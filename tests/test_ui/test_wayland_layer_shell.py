@@ -98,17 +98,25 @@ def test_wayland_floating_drag_moves_item_inside_stationary_surface() -> None:
     assert "root.shellAdapter.set_floating_input_region(" in floating
     assert "onXChanged: root.syncLayerShellInputRegion()" in floating
     assert "onYChanged: root.syncLayerShellInputRegion()" in floating
-    assert "root.shellAdapter.controlPanelX" in floating
-    assert "root.shellAdapter.controlPanelY" in floating
+    assert "root.shellAdapter.controlLogoCenterX" in floating
+    assert "root.shellAdapter.controlLogoCenterY" in floating
+    assert "- paletteHost.width / 2" in floating
+    assert "- paletteHost.height / 2" in floating
     assert "def set_floating_input_region(" in shell_adapter
-    assert "def controlPanelX(" in shell_adapter
-    assert "def controlPanelY(" in shell_adapter
+    assert "def controlLogoCenterX(" in shell_adapter
+    assert "def controlLogoCenterY(" in shell_adapter
+    assert 'findChild(QQuickItem, "minimizeButton")' in shell_adapter
+    assert "mapToScene(" in shell_adapter
 
     # Never move the layer-surface itself from pointer-local coordinates.
     assert "setWaylandDragMargins" not in wayland
     assert "moveLayerShellBy" not in floating
     assert "xAxis.onActiveValueChanged" not in floating
     assert "yAxis.onActiveValueChanged" not in floating
+
+    # Minimize must align to the actual logo, not merely to toolbarHost's corner.
+    assert "root.shellAdapter.controlPanelX" not in floating
+    assert "root.shellAdapter.controlPanelY" not in floating
 
 
 def test_qmldir_exports_wayland_components() -> None:
