@@ -1,23 +1,21 @@
 #!/usr/bin/env bash
-# install.sh — Script di installazione locale per MagicScribe
-# Crea/ripara l'ambiente virtuale, installa le dipendenze e configura
-# il file .desktop per l'integrazione con KDE Plasma.
+# install.sh — installazione locale repo-based di MagicScribe per KDE/Wayland.
 
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="magicscribe"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+PIP_VERSION="26.2.1"
 
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 APP_CONFIG_DIR="${CONFIG_HOME}/${APP_NAME}"
 APP_STATE_DIR="${STATE_HOME}/${APP_NAME}"
-DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 DESKTOP_FILE="${DATA_HOME}/applications/${APP_NAME}.desktop"
 ICON_THEME_DIR="${DATA_HOME}/icons/hicolor"
 VENV_DIR="${SCRIPT_DIR}/.venv"
-LAYER_SHELL_QML_ROOT=""
 
 echo "=== MagicScribe — Installazione locale ==="
 
@@ -28,8 +26,7 @@ fi
 
 if ! "${PYTHON_BIN}" - <<'PY'
 import sys
-if sys.version_info < (3, 12):
-    raise SystemExit(f"Python 3.12+ richiesto, trovato {sys.version.split()[0]}")
+raise SystemExit(0 if sys.version_info >= (3, 12) else 1)
 PY
 then
     echo "ERRORE: MagicScribe richiede Python 3.12 o superiore." >&2
@@ -37,7 +34,7 @@ then
 fi
 
 # 1. Ambiente virtuale
-echo "[1/7] Verifica ambiente virtuale..."
+echo "[1/6] Verifica ambiente virtuale..."
 if [ -d "${VENV_DIR}" ]; then
     if [ ! -x "${VENV_DIR}/bin/python" ] || ! "${VENV_DIR}/bin/python" - <<'PY' >/dev/null 2>&1
 import sys
@@ -56,18 +53,17 @@ else
     echo "     Ambiente virtuale valido."
 fi
 
-# 2. Dipendenze
-echo "[2/7] Installazione dipendenze riproducibili..."
-"${VENV_DIR}/bin/python" "${SCRIPT_DIR}/scripts/verify_release_constraints.py"
-"${VENV_DIR}/bin/python" -m pip install --upgrade pip --quiet
+# 2. Dipendenze: una sola sorgente di verità in pyproject.toml
+echo "[2/6] Installazione dipendenze runtime pinned..."
+"${VENV_DIR}/bin/python" -m pip install "pip==${PIP_VERSION}" --quiet
 "${VENV_DIR}/bin/python" -m pip install \
-    -r "${SCRIPT_DIR}/requirements.txt" \
-    -c "${SCRIPT_DIR}/constraints-release.txt" \
+    --group "${SCRIPT_DIR}/pyproject.toml:runtime" \
     --quiet
-echo "     Dipendenze release installate dai pin verificati."
+"${VENV_DIR}/bin/python" -m pip check
+echo "     Ambiente runtime coerente."
 
 # 3. Verifica runtime Qt/PySide6 + D-Bus + Wayland/layer-shell
-echo "[3/7] Verifica runtime PySide6/Qt, D-Bus e KDE layer-shell..."
+echo "[3/6] Verifica runtime PySide6/Qt, D-Bus e KDE layer-shell..."
 "${VENV_DIR}/bin/python" - <<'PY'
 import ctypes.util
 from pathlib import Path
@@ -89,10 +85,7 @@ plugins_root = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))
 platforms_dir = plugins_root / "platforms"
 wayland_plugins = sorted(platforms_dir.glob("libqwayland*.so"))
 if not wayland_plugins:
-    raise SystemExit(
-        "Plugin Qt Wayland non trovato in "
-        f"{platforms_dir}; il porting nativo richiede il QPA Wayland"
-    )
+    raise SystemExit(f"Plugin Qt Wayland non trovato in {platforms_dir}")
 
 missing_native = [
     name for name in ("wayland-client", "xkbcommon")
@@ -100,8 +93,7 @@ missing_native = [
 ]
 if missing_native:
     raise SystemExit(
-        "Librerie native richieste dal runtime Wayland mancanti: "
-        + ", ".join(missing_native)
+        "Librerie native Wayland mancanti: " + ", ".join(missing_native)
     )
 
 print(
@@ -144,26 +136,8 @@ PY
 )"
 echo "     layer-shell-qt QML: ${LAYER_SHELL_QML_ROOT} (ABI Qt ${SYSTEM_QT_VERSION})"
 
-# xcb/X11 resta soltanto un rollback diagnostico durante il gate di migrazione.
-if "${VENV_DIR}/bin/python" - <<'PY' >/dev/null 2>&1
-import ctypes.util
-from pathlib import Path
-from PySide6.QtCore import QLibraryInfo
-plugins = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)) / "platforms"
-raise SystemExit(0 if (
-    (plugins / "libqxcb.so").is_file()
-    and ctypes.util.find_library("X11") is not None
-    and ctypes.util.find_library("Xext") is not None
-) else 1)
-PY
-then
-    echo "     Rollback xcb/X11: disponibile"
-else
-    echo "     Rollback xcb/X11: non disponibile"
-fi
-
-# 4. Verifica modulo QML, incluso il boundary KDE di sistema
-echo "[4/7] Verifica sorgenti QML..."
+# 4. Verifica QML completa contro il modulo KDE reale
+echo "[4/6] Verifica sorgenti QML..."
 if [ ! -x "${VENV_DIR}/bin/pyside6-qmllint" ]; then
     echo "ERRORE: pyside6-qmllint non disponibile nell'ambiente virtuale." >&2
     exit 1
@@ -175,13 +149,9 @@ fi
     "${SCRIPT_DIR}"/ui/qml/MagicScribe/*.qml
 echo "     Modulo QML + layer-shell valido e senza warning."
 
-# 5. Directory di configurazione
-echo "[5/7] Creazione directory di configurazione..."
+# 5. Directory e icone
+echo "[5/6] Installazione integrazione desktop..."
 mkdir -p "${APP_CONFIG_DIR}" "${APP_STATE_DIR}"
-echo "     Directory create (${APP_CONFIG_DIR}, ${APP_STATE_DIR})."
-
-# 6. Icone nel tema di sistema
-echo "[6/7] Installazione icone nel tema di sistema..."
 for size in 16 22 24 32 48 64 128 256 512; do
     src="${SCRIPT_DIR}/assets/icons/png/magicscribe_${size}.png"
     if [ -f "${src}" ]; then
@@ -195,16 +165,8 @@ SVG_SRC="${SCRIPT_DIR}/assets/icons/magicscribe.svg"
 if [ -f "${SVG_SRC}" ]; then
     mkdir -p "${ICON_THEME_DIR}/scalable/apps"
     cp -f "${SVG_SRC}" "${ICON_THEME_DIR}/scalable/apps/magicscribe.svg"
-else
-    echo "     (SVG non trovato, salto installazione scalable)"
 fi
-
 gtk-update-icon-cache "${ICON_THEME_DIR}" 2>/dev/null || true
-echo "     Icone installate nel tema hicolor."
-
-# 7. File .desktop
-echo "[7/7] Creazione file .desktop..."
-mkdir -p "$(dirname "${DESKTOP_FILE}")"
 
 desktop_exec_quote() {
     "${VENV_DIR}/bin/python" - "$1" <<'PY'
@@ -233,7 +195,7 @@ PY
 
 EXEC_PYTHON="$(desktop_exec_quote "${VENV_DIR}/bin/python")"
 EXEC_MAIN="$(desktop_exec_quote "${SCRIPT_DIR}/main.py")"
-
+mkdir -p "$(dirname "${DESKTOP_FILE}")"
 cat > "${DESKTOP_FILE}" << EOF
 [Desktop Entry]
 Type=Application
@@ -247,17 +209,14 @@ Exec=${EXEC_PYTHON} ${EXEC_MAIN}
 Terminal=false
 Categories=Graphics;Utility;
 Keywords=annotation;drawing;screenshot;presentation;
-StartupWMClass=MagicScribe
 EOF
 
 if command -v desktop-file-validate >/dev/null 2>&1; then
     desktop-file-validate "${DESKTOP_FILE}"
 fi
-
-echo "     File .desktop creato in ${DESKTOP_FILE}"
 update-desktop-database "$(dirname "${DESKTOP_FILE}")" 2>/dev/null || true
 
-echo ""
-echo "=== Installazione completata ==="
-echo "Per avviare MagicScribe:"
-echo "  ${VENV_DIR}/bin/python ${SCRIPT_DIR}/main.py"
+# 6. Riepilogo
+echo "[6/6] Installazione completata."
+echo "MagicScribe è un'app repo-based: il file .desktop punta a questa checkout."
+echo "Avvio: ${VENV_DIR}/bin/python ${SCRIPT_DIR}/main.py"
