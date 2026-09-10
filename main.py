@@ -15,14 +15,15 @@ import os
 from pathlib import Path
 import sys
 
-# Su una sessione Wayland usiamo esplicitamente il QPA nativo. Un override
-# manuale (es. QT_QPA_PLATFORM=xcb) resta disponibile come rollback diagnostico
-# finche' il gate KDE/KWin della migrazione non e' completato.
+# Su una sessione Wayland la produzione usa il QPA nativo. Il precedente
+# override xcb/XWayland era soltanto un rollback diagnostico della migrazione ed
+# e' stato ritirato dopo il completamento del gate KDE/KWin.
 _is_wayland_session = (
     os.environ.get("XDG_SESSION_TYPE") == "wayland"
     or bool(os.environ.get("WAYLAND_DISPLAY"))
 )
-if _is_wayland_session and not os.environ.get("QT_QPA_PLATFORM"):
+_requested_qpa = os.environ.get("QT_QPA_PLATFORM", "").lower()
+if _is_wayland_session and _requested_qpa in {"", "xcb"}:
     os.environ["QT_QPA_PLATFORM"] = "wayland"
 
 from PySide6.QtCore import QTimer, QSize
@@ -97,17 +98,14 @@ def _set_application_icon(app: QApplication, app_dir: Path) -> None:
         app.setWindowIcon(QIcon(str(svg_path)))
 
 
-def _portal_parent_window(window: QWindow) -> str:
-    """Restituisce il parent XDG quando abbiamo un identificatore esportabile.
+def _portal_parent_window(_window: QWindow) -> str:
+    """Restituisce il parent XDG per GlobalShortcuts.
 
-    XDG Desktop Portal accetta esplicitamente una stringa vuota quando non e'
-    disponibile un handle Wayland xdg-foreign. Il parent influenza il dialog,
-    non la semantica delle GlobalShortcuts.
+    Sul percorso Wayland nativo non esportiamo ancora un handle xdg-foreign;
+    XDG Desktop Portal accetta esplicitamente una stringa vuota. Il parent
+    influenza il dialog, non la semantica delle GlobalShortcuts.
     """
-    if QApplication.platformName().lower() != "xcb":
-        return ""
-    xid = int(window.winId())
-    return f"x11:{xid:x}" if xid else ""
+    return ""
 
 
 def _create_floating_palette(
