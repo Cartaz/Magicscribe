@@ -51,7 +51,10 @@ class WindowCoordinator:
         floating.show()
 
     def restore_control_panel(self) -> None:
-        self._align_control_logo_to_floating()
+        # Il mapping 1:1 si applica solo al vero restore dalla floating palette.
+        # Un click del tray mentre la toolbar è già aperta non deve spostarla.
+        if self.is_minimized_to_floating():
+            self._align_control_logo_to_floating()
         self.show_control_panel()
 
     def is_minimized_to_floating(self) -> bool:
