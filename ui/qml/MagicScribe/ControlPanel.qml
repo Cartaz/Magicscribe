@@ -198,7 +198,7 @@ ApplicationWindow {
                         }
 
                         contentItem: Image {
-                            source: "../../../assets/icons/png/magicscribe_48.png"
+                            source: "../../../assets/icons/magicscribe.svg"
                             sourceSize.width: 30
                             sourceSize.height: 30
                             fillMode: Image.PreserveAspectFit

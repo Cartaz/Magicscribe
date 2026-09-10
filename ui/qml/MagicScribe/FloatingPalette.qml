@@ -109,7 +109,7 @@ Window {
                 anchors.centerIn: parent
                 width: 22
                 height: 22
-                source: "../../../assets/icons/png/magicscribe_48.png"
+                source: "../../../assets/icons/magicscribe.svg"
                 sourceSize.width: 22
                 sourceSize.height: 22
                 fillMode: Image.PreserveAspectFit
