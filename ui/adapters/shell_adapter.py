@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QPoint, Property, QRect, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QPoint, QPointF, Property, QRect, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor, QRegion
+from PySide6.QtQuick import QQuickItem
 
 from config.constants import HotkeyDefaults
 from ui.native.global_shortcuts import GlobalShortcutService
@@ -62,27 +63,53 @@ class ShellAdapter(QObject):
         service = self._global_shortcuts
         return service is not None and service.active
 
-    @Property(float)
-    def controlPanelX(self) -> float:
+    def _control_panel_coordinate(self, name: str, fallback: float) -> float:
         window = self._coordinator._control_window
         if window is None:
-            return 20.0
-        value = window.property("layerShellPanelX")
+            return fallback
+        value = window.property(name)
         try:
             return float(value)
         except (TypeError, ValueError):
-            return 20.0
+            return fallback
+
+    @Property(float)
+    def controlPanelX(self) -> float:
+        return self._control_panel_coordinate("layerShellPanelX", 20.0)
 
     @Property(float)
     def controlPanelY(self) -> float:
+        return self._control_panel_coordinate("layerShellPanelY", 20.0)
+
+    def _control_logo_center(self) -> QPointF:
+        """Centro del pulsante logo nelle coordinate della control surface.
+
+        Il mapping parte dal QQuickItem reale, quindi include automaticamente
+        margini, Column/Flickable e l'eventuale contentY. Questo evita offset
+        hard-coded tra toolbar e floating palette.
+        """
         window = self._coordinator._control_window
-        if window is None:
-            return 20.0
-        value = window.property("layerShellPanelY")
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return 20.0
+        if window is not None:
+            logo = window.findChild(QQuickItem, "minimizeButton")
+            if logo is not None:
+                return logo.mapToScene(
+                    QPointF(logo.width() / 2.0, logo.height() / 2.0)
+                )
+
+        # Fallback coerente con il layout corrente, usato solo se il QML non e'
+        # ancora completamente materializzato quando viene interrogato.
+        return QPointF(
+            self._control_panel_coordinate("layerShellPanelX", 20.0) + 52.0,
+            self._control_panel_coordinate("layerShellPanelY", 20.0) + 50.0,
+        )
+
+    @Property(float)
+    def controlLogoCenterX(self) -> float:
+        return self._control_logo_center().x()
+
+    @Property(float)
+    def controlLogoCenterY(self) -> float:
+        return self._control_logo_center().y()
 
     @Slot(result=QPoint)
     def global_cursor_position(self) -> QPoint:
