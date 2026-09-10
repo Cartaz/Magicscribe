@@ -10,8 +10,6 @@ Window {
     required property var drawingAdapter
     required property var shellAdapter
 
-    property bool layerShellPlacement: false
-    property bool layerShellFullscreen: false
     property alias layerShellPaletteX: paletteHost.x
     property alias layerShellPaletteY: paletteHost.y
 
@@ -25,8 +23,8 @@ Window {
                                                 : paletteHeight + 40
 
     visible: false
-    width: layerShellFullscreen ? currentScreenWidth : paletteWidth
-    height: layerShellFullscreen ? currentScreenHeight : paletteHeight
+    width: currentScreenWidth
+    height: currentScreenHeight
     color: "transparent"
     title: "MagicScribe"
     flags: Qt.FramelessWindowHint
@@ -35,7 +33,7 @@ Window {
            | Qt.WindowDoesNotAcceptFocus
 
     function syncLayerShellInputRegion() {
-        if (!root.layerShellFullscreen || !root.visible)
+        if (!root.visible)
             return
         root.shellAdapter.set_floating_input_region(
                     paletteHost.x,
@@ -45,8 +43,6 @@ Window {
     }
 
     function clampPaletteHost() {
-        if (!root.layerShellFullscreen)
-            return
         paletteHost.x = Math.max(
                     0,
                     Math.min(root.width - paletteHost.width, paletteHost.x))
@@ -56,11 +52,11 @@ Window {
     }
 
     onVisibleChanged: {
-        if (root.visible && root.layerShellFullscreen) {
+        if (root.visible) {
             // Collasso 1:1: il centro della palette ridotta coincide esattamente
             // con il centro del logo premuto nella toolbar. Al restore il verso
-            // opposto viene applicato da ShellAdapter, spostando toolbarHost in
-            // modo che il logo riappaia sul centro corrente della floating icon.
+            // opposto sposta toolbarHost affinché il logo riappaia sul centro
+            // corrente della floating icon.
             paletteHost.x = root.shellAdapter.controlLogoCenterX
                             - paletteHost.width / 2
             paletteHost.y = root.shellAdapter.controlLogoCenterY
@@ -80,8 +76,8 @@ Window {
 
     Item {
         id: paletteHost
-        x: root.layerShellFullscreen ? 20 : 0
-        y: root.layerShellFullscreen ? 20 : 0
+        x: 20
+        y: 20
         width: root.paletteWidth
         height: root.paletteHeight
 
@@ -141,16 +137,12 @@ Window {
         }
 
         DragHandler {
-            target: root.layerShellFullscreen ? paletteHost : null
+            target: paletteHost
             acceptedButtons: Qt.LeftButton
             xAxis.minimum: 0
             xAxis.maximum: Math.max(0, root.width - paletteHost.width)
             yAxis.minimum: 0
             yAxis.maximum: Math.max(0, root.height - paletteHost.height)
-            onActiveChanged: {
-                if (active && !root.layerShellFullscreen)
-                    root.startSystemMove()
-            }
         }
     }
 }
