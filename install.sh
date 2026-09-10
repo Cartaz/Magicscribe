@@ -149,23 +149,16 @@ fi
     "${SCRIPT_DIR}"/ui/qml/MagicScribe/*.qml
 echo "     Modulo QML + layer-shell valido e senza warning."
 
-# 5. Directory e icone
+# 5. Directory e icona vettoriale canonica
 echo "[5/6] Installazione integrazione desktop..."
 mkdir -p "${APP_CONFIG_DIR}" "${APP_STATE_DIR}"
-for size in 16 22 24 32 48 64 128 256 512; do
-    src="${SCRIPT_DIR}/assets/icons/png/magicscribe_${size}.png"
-    if [ -f "${src}" ]; then
-        dir="${ICON_THEME_DIR}/${size}x${size}/apps"
-        mkdir -p "${dir}"
-        cp -f "${src}" "${dir}/magicscribe.png"
-    fi
-done
-
 SVG_SRC="${SCRIPT_DIR}/assets/icons/magicscribe.svg"
-if [ -f "${SVG_SRC}" ]; then
-    mkdir -p "${ICON_THEME_DIR}/scalable/apps"
-    cp -f "${SVG_SRC}" "${ICON_THEME_DIR}/scalable/apps/magicscribe.svg"
+if [ ! -f "${SVG_SRC}" ]; then
+    echo "ERRORE: icona canonica non trovata: ${SVG_SRC}" >&2
+    exit 1
 fi
+mkdir -p "${ICON_THEME_DIR}/scalable/apps"
+cp -f "${SVG_SRC}" "${ICON_THEME_DIR}/scalable/apps/magicscribe.svg"
 gtk-update-icon-cache "${ICON_THEME_DIR}" 2>/dev/null || true
 
 desktop_exec_quote() {
