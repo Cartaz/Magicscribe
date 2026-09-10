@@ -117,12 +117,22 @@ def test_shell_adapter_only_uses_public_coordinator_api() -> None:
     ]
 
 
-def test_tool_list_model_is_derived_from_canonical_specs() -> None:
+def test_tool_list_model_derives_domain_capabilities_and_owns_presentation() -> None:
+    expected_presentation = {
+        ToolType.PEN: ("Penna", "P"),
+        ToolType.ERASER: ("Gomma", "G"),
+        ToolType.LINE: ("Linea", "/"),
+        ToolType.RECT: ("Rett.", "[ ]"),
+        ToolType.CIRCLE: ("Cerchio", "O"),
+        ToolType.SMOOTH: ("Smuss.", "~"),
+    }
+
     model = ToolListModel()
     assert model.rowCount() == len(TOOL_SPECS)
     for row, spec in enumerate(TOOL_SPECS):
         index = model.index(row, 0)
+        label, glyph = expected_presentation[spec.tool_type]
         assert model.data(index, model.ToolIdRole) == spec.key
-        assert model.data(index, model.DisplayLabelRole) == spec.label
-        assert model.data(index, model.GlyphRole) == spec.glyph
+        assert model.data(index, model.DisplayLabelRole) == label
+        assert model.data(index, model.GlyphRole) == glyph
         assert model.data(index, model.SupportsColorRole) is spec.supports_color
