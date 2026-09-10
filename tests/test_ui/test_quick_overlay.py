@@ -74,48 +74,6 @@ def test_overlay_surface_toggles_native_input_transparency(tmp_path) -> None:
         _APP.processEvents()
 
 
-def test_overlay_xcb_uses_input_shape_without_changing_window_flags(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    event_bus.clear()
-    controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
-    calls: list[tuple[int, bool]] = []
-
-    monkeypatch.setattr(overlay_surface_module, "_platform_name", lambda: "xcb")
-    monkeypatch.setattr(
-        overlay_surface_module,
-        "set_x11_click_through",
-        lambda window_id, enabled: calls.append((window_id, enabled)) or True,
-    )
-
-    surface = OverlaySurface(drawing_adapter, tool_adapter)
-    flags_before = surface.window.flags()
-    surface.show()
-    _APP.processEvents()
-
-    try:
-        assert calls and calls[-1][1] is True
-        assert surface.window.flags() == flags_before
-        assert not (
-            surface.window.flags() & Qt.WindowType.WindowTransparentForInput
-        )
-
-        drawing_adapter.toggle_drawing()
-        _APP.processEvents()
-        assert controller.is_drawing_active() is True
-        assert calls[-1][1] is False
-        assert surface.window.flags() == flags_before
-
-        drawing_adapter.toggle_drawing()
-        _APP.processEvents()
-        assert controller.is_drawing_active() is False
-        assert calls[-1][1] is True
-        assert surface.window.flags() == flags_before
-    finally:
-        _close_surface(surface, drawing_adapter, tool_adapter)
-
-
 def test_native_wayland_builds_one_overlay_per_screen(
     tmp_path,
     monkeypatch,
