@@ -32,18 +32,15 @@ The Smooth tool spatially resamples dense pointer input before causal filtering 
 
 ## Dependencies and development
 
-Dependency metadata is intentionally consolidated in one `pyproject.toml` using standard dependency groups:
+All Python dependencies are intentionally consolidated in a single `requirements.txt`. Versions are pinned so local installs and CI use the same dependency set.
 
-- `runtime`: exact audited runtime dependencies;
-- `dev`: runtime plus exact CI/development dependencies.
-
-The installer and CI consume those groups directly. CI additionally pins GitHub Actions to commit SHAs, pins pip, runs Ruff, tests Python 3.12–3.14, compiles all Python sources, lints portable QML, executes pytest and records a quick renderer benchmark.
+The installer and CI both consume that file directly. CI additionally pins GitHub Actions to commit SHAs, pins pip, runs Ruff, tests Python 3.12–3.14, compiles all Python sources, lints portable QML, executes pytest and records a quick renderer benchmark.
 
 Typical local checks are:
 
 ```bash
-python -m pip install --group ./pyproject.toml:dev
-python -m ruff check config core ui scripts main.py
+python -m pip install -r requirements.txt
+python -m ruff check --target-version py312 --line-length 100 --select E4,E7,E9,F config core ui scripts main.py
 python -m compileall -q config core ui scripts main.py
 python -m pytest -q
 python scripts/benchmark_renderer.py --quick
@@ -60,7 +57,7 @@ MagicScribe is intentionally a **repo-based desktop application**, not a wheel/P
 bash install.sh
 ```
 
-The installer creates `.venv`, installs the pinned `runtime` dependency group, verifies Qt/Wayland/layer-shell compatibility, lints the complete QML module, installs application icons and creates the XDG `.desktop` entry.
+The installer creates `.venv`, installs the pinned dependencies from `requirements.txt`, verifies Qt/Wayland/layer-shell compatibility, lints the complete QML module, installs application icons and creates the XDG `.desktop` entry.
 
 The desktop entry points to the current checkout. Moving or deleting the repository therefore invalidates that launcher; after moving the checkout, run `bash install.sh` again. This is an explicit deployment model rather than an accidental packaging contract.
 
