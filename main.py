@@ -126,6 +126,7 @@ def main() -> None:
         app.setQuitOnLastWindowClosed(True)
 
         platform_name = QApplication.platformName().lower()
+        logger.info("Piattaforma Qt effettiva: %s", platform_name)
         if not _is_wayland_session or not platform_name.startswith("wayland"):
             logger.critical(
                 "MagicScribe 2.x richiede KDE Plasma su Wayland nativo; "
@@ -204,7 +205,7 @@ def main() -> None:
             tray = TrayIcon(controller, window_coordinator.restore_control_panel)
             QTimer.singleShot(200, ensure_window_order)
 
-            logger.info("Applicazione avviata con shell layer-shell e overlay Qt Quick")
+            logger.info("Applicazione avviata con shell e overlay Qt Quick")
             exit_code = app.exec()
             _ = tray, floating_component
         finally:
