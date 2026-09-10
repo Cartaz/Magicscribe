@@ -11,12 +11,22 @@ Window {
     required property var shellAdapter
 
     property bool layerShellPlacement: false
-    property real layerShellMarginLeft: 20
-    property real layerShellMarginTop: 20
+    property bool layerShellFullscreen: false
+    property alias layerShellPaletteX: paletteHost.x
+    property alias layerShellPaletteY: paletteHost.y
+
+    readonly property real paletteWidth: 58
+    readonly property real paletteHeight: 58
+    readonly property real currentScreenWidth: Screen.width > 0
+                                               ? Screen.width
+                                               : paletteWidth + 40
+    readonly property real currentScreenHeight: Screen.height > 0
+                                                ? Screen.height
+                                                : paletteHeight + 40
 
     visible: false
-    width: 58
-    height: 58
+    width: layerShellFullscreen ? currentScreenWidth : paletteWidth
+    height: layerShellFullscreen ? currentScreenHeight : paletteHeight
     color: "transparent"
     title: "MagicScribe"
     flags: Qt.FramelessWindowHint
@@ -24,81 +34,113 @@ Window {
            | Qt.Tool
            | Qt.WindowDoesNotAcceptFocus
 
-    function moveLayerShellBy(dx, dy) {
-        if (!root.layerShellPlacement)
+    function syncLayerShellInputRegion() {
+        if (!root.layerShellFullscreen || !root.visible)
             return
-        const maxLeft = Math.max(0, Screen.width - root.width)
-        const maxTop = Math.max(0, Screen.height - root.height)
-        root.layerShellMarginLeft = Math.max(
-                    0, Math.min(maxLeft, root.layerShellMarginLeft + dx))
-        root.layerShellMarginTop = Math.max(
-                    0, Math.min(maxTop, root.layerShellMarginTop + dy))
+        root.shellAdapter.set_floating_input_region(
+                    paletteHost.x,
+                    paletteHost.y,
+                    paletteHost.width,
+                    paletteHost.height)
     }
 
-    RaisedSurface {
-        id: paletteSurface
-        anchors.centerIn: parent
-        width: 40
-        height: 40
-        radius: 20
+    function clampPaletteHost() {
+        if (!root.layerShellFullscreen)
+            return
+        paletteHost.x = Math.max(
+                    0,
+                    Math.min(root.width - paletteHost.width, paletteHost.x))
+        paletteHost.y = Math.max(
+                    0,
+                    Math.min(root.height - paletteHost.height, paletteHost.y))
+    }
 
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            color: "transparent"
-            border.width: root.drawingAdapter.active ? 1 : 0
-            border.color: Theme.accent
+    onVisibleChanged: {
+        clampPaletteHost()
+        syncLayerShellInputRegion()
+    }
+    onWidthChanged: {
+        clampPaletteHost()
+        syncLayerShellInputRegion()
+    }
+    onHeightChanged: {
+        clampPaletteHost()
+        syncLayerShellInputRegion()
+    }
 
-            Behavior on border.width {
-                NumberAnimation { duration: Theme.animationFast }
+    Item {
+        id: paletteHost
+        x: root.layerShellFullscreen ? 20 : 0
+        y: root.layerShellFullscreen ? 20 : 0
+        width: root.paletteWidth
+        height: root.paletteHeight
+
+        onXChanged: root.syncLayerShellInputRegion()
+        onYChanged: root.syncLayerShellInputRegion()
+        onWidthChanged: root.syncLayerShellInputRegion()
+        onHeightChanged: root.syncLayerShellInputRegion()
+
+        RaisedSurface {
+            id: paletteSurface
+            anchors.centerIn: parent
+            width: 40
+            height: 40
+            radius: 20
+
+            Rectangle {
+                anchors.fill: parent
+                radius: parent.radius
+                color: "transparent"
+                border.width: root.drawingAdapter.active ? 1 : 0
+                border.color: Theme.accent
+
+                Behavior on border.width {
+                    NumberAnimation { duration: Theme.animationFast }
+                }
+            }
+
+            Image {
+                anchors.centerIn: parent
+                width: 22
+                height: 22
+                source: "../../../assets/icons/png/magicscribe_48.png"
+                sourceSize.width: 22
+                sourceSize.height: 22
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+            }
+
+            StatusIndicator {
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.rightMargin: -4
+                anchors.bottomMargin: -4
+                width: 12
+                height: 12
+                active: root.drawingAdapter.active
             }
         }
 
-        Image {
-            anchors.centerIn: parent
-            width: 22
-            height: 22
-            source: "../../../assets/icons/png/magicscribe_48.png"
-            sourceSize.width: 22
-            sourceSize.height: 22
-            fillMode: Image.PreserveAspectFit
-            smooth: true
+        HoverHandler {
+            cursorShape: Qt.PointingHandCursor
         }
 
-        StatusIndicator {
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.rightMargin: -4
-            anchors.bottomMargin: -4
-            width: 12
-            height: 12
-            active: root.drawingAdapter.active
+        TapHandler {
+            acceptedButtons: Qt.LeftButton
+            onTapped: root.shellAdapter.restore_control_panel()
         }
-    }
 
-    HoverHandler {
-        cursorShape: Qt.PointingHandCursor
-    }
-
-    TapHandler {
-        acceptedButtons: Qt.LeftButton
-        onTapped: root.shellAdapter.restore_control_panel()
-    }
-
-    DragHandler {
-        target: null
-        acceptedButtons: Qt.LeftButton
-        onActiveChanged: {
-            if (active && !root.layerShellPlacement)
-                root.startSystemMove()
-        }
-        xAxis.onActiveValueChanged: (delta) => {
-            if (root.layerShellPlacement)
-                root.moveLayerShellBy(delta, 0)
-        }
-        yAxis.onActiveValueChanged: (delta) => {
-            if (root.layerShellPlacement)
-                root.moveLayerShellBy(0, delta)
+        DragHandler {
+            target: root.layerShellFullscreen ? paletteHost : null
+            acceptedButtons: Qt.LeftButton
+            xAxis.minimum: 0
+            xAxis.maximum: Math.max(0, root.width - paletteHost.width)
+            yAxis.minimum: 0
+            yAxis.maximum: Math.max(0, root.height - paletteHost.height)
+            onActiveChanged: {
+                if (active && !root.layerShellFullscreen)
+                    root.startSystemMove()
+            }
         }
     }
 }
