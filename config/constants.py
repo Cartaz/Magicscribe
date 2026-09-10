@@ -1,4 +1,4 @@
-"""Costanti globali dell'applicazione MagicScribe."""
+"""Costanti applicative non derivate dal dominio strumenti."""
 
 from __future__ import annotations
 
@@ -36,7 +36,8 @@ class PathDefaults:
 
 
 class HotkeyDefaults:
-    """Unica sorgente di verita' delle scorciatoie runtime correnti."""
+    """Unica sorgente di verità delle scorciatoie runtime."""
+
     TOGGLE_DRAW: str = "F9"
     TOGGLE_VISIBILITY: str = "Ctrl+Shift+F9"
     CLEAR: str = "Shift+F9"
@@ -44,21 +45,6 @@ class HotkeyDefaults:
     REDO: str = "Shift+F8"
     MINIMIZE: str = "Ctrl+M"
     QUIT_APP: str = "Ctrl+Q"
-
-
-class ToolDefaults:
-    PEN_COLOR: str = "#ff0000"
-    PEN_SIZE: int = 5
-    ERASER_SIZE: int = 40
-    LINE_COLOR: str = "#27ae60"
-    LINE_SIZE: int = 3
-    RECT_COLOR: str = "#ff0000"
-    RECT_SIZE: int = 3
-    CIRCLE_COLOR: str = "#ff8800"
-    CIRCLE_SIZE: int = 3
-    SMOOTH_COLOR: str = "#ff0000"
-    SMOOTH_SIZE: int = 5
-    UNDO_MAX_DEPTH: int = 50
 
 
 class LogDefaults:
