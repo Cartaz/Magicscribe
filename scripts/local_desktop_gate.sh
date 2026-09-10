@@ -283,6 +283,12 @@ ask "LS2" "La toolbar si può trascinare liberamente dal logo senza sparire o pe
 ask "LS3" "La floating palette resta sopra le normali finestre quando la toolbar è ridotta?" || true
 ask "LS4" "MagicScribe Overlay NON compare più nell'elenco Alt+Tab/task switcher?" || true
 
+section "Toolbar / floating 1:1"
+log "Per FP1 sposta prima la toolbar in una posizione ben riconoscibile."
+ask "FP1" "Riducendo la toolbar dal logo, la floating icon compare ESATTAMENTE sullo stesso centro, senza salto o offset visibile?" || true
+log "Per FP2 lascia la palette ridotta, trascinala in un punto molto diverso e poi cliccala per riaprire."
+ask "FP2" "La floating palette si trascina liberamente e, riaprendo, il logo della toolbar ricompare ESATTAMENTE sul centro dell'icona appena cliccata?" || true
+
 section "Overlay input region"
 ask "OV1" "Con disegno DISATTIVATO, click e scroll raggiungono subito desktop/app sottostante senza Alt+Tab?" || true
 ask "OV2" "Attivando il disegno, l'overlay cattura il puntatore e impedisce click accidentali all'app sottostante?" || true
