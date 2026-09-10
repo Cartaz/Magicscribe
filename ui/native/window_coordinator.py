@@ -53,16 +53,9 @@ class WindowCoordinator:
     def restore_control_panel(self) -> None:
         # Il mapping 1:1 si applica solo al vero restore dalla floating palette.
         # Un click del tray mentre la toolbar è già aperta non deve spostarla.
-        if self.is_minimized_to_floating():
+        if self._is_minimized_to_floating():
             self._align_control_logo_to_floating()
         self.show_control_panel()
-
-    def is_minimized_to_floating(self) -> bool:
-        floating = self._floating_window
-        return floating is not None and floating.isVisible()
-
-    def ensure_z_order(self) -> None:
-        """No-op intenzionale: lo stacking appartiene al protocollo layer-shell."""
 
     def shutdown(self) -> None:
         if self._floating_window is not None:
@@ -74,6 +67,10 @@ class WindowCoordinator:
         self.shutdown()
         QApplication.quit()
 
+    def _is_minimized_to_floating(self) -> bool:
+        floating = self._floating_window
+        return floating is not None and floating.isVisible()
+
     @staticmethod
     def _numeric_property(window: QWindow, name: str, fallback: float) -> float:
         try:
@@ -81,7 +78,7 @@ class WindowCoordinator:
         except (TypeError, ValueError):
             return fallback
 
-    def control_panel_position(self) -> QPointF:
+    def _control_panel_position(self) -> QPointF:
         window = self._control_window
         if window is None:
             return QPointF(20.0, 20.0)
@@ -91,15 +88,16 @@ class WindowCoordinator:
         )
 
     def control_logo_center(self) -> QPointF:
+        """Restituisce il centro del logo della toolbar nello spazio della surface."""
         window = self._control_window
         if window is not None:
             logo = window.findChild(QQuickItem, "minimizeButton")
             if logo is not None:
                 return logo.mapToScene(QPointF(logo.width() / 2.0, logo.height() / 2.0))
-        panel = self.control_panel_position()
+        panel = self._control_panel_position()
         return QPointF(panel.x() + 52.0, panel.y() + 50.0)
 
-    def floating_palette_center(self) -> QPointF | None:
+    def _floating_palette_center(self) -> QPointF | None:
         window = self._floating_window
         if window is None:
             return None
@@ -113,11 +111,11 @@ class WindowCoordinator:
 
     def _align_control_logo_to_floating(self) -> None:
         control = self._control_window
-        floating_center = self.floating_palette_center()
+        floating_center = self._floating_palette_center()
         if control is None or floating_center is None:
             return
         logo_center = self.control_logo_center()
-        panel = self.control_panel_position()
+        panel = self._control_panel_position()
         control.setProperty(
             "layerShellPanelX",
             panel.x() + floating_center.x() - logo_center.x(),
