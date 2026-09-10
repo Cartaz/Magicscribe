@@ -67,15 +67,14 @@ class ShellAdapter(QObject):
         """Restituisce l'ultima posizione globale del puntatore nota a Qt."""
         return QCursor.pos()
 
-    @Slot(float, float, float, float)
-    def set_control_input_region(
+    def _set_window_input_region(
         self,
+        window_attr: str,
         x: float,
         y: float,
         width: float,
         height: float,
     ) -> None:
-        """Limita l'input della control surface fullscreen al pannello visibile."""
         region = QRegion(
             QRect(
                 round(x),
@@ -87,8 +86,8 @@ class ShellAdapter(QObject):
 
         def apply_region() -> None:
             # ShellAdapter e WindowCoordinator costituiscono lo stesso boundary UI;
-            # la finestra viene associata subito dopo la creazione QML.
-            window = self._coordinator._control_window
+            # le finestre vengono associate subito dopo la creazione QML.
+            window = getattr(self._coordinator, window_attr)
             if window is not None:
                 window.setMask(region)
 
@@ -96,6 +95,32 @@ class ShellAdapter(QObject):
         # QWindow::setMask prima della creazione native non ha effetto; ripetiamo
         # nel prossimo giro dell'event loop per coprire il primo show().
         QTimer.singleShot(0, apply_region)
+
+    @Slot(float, float, float, float)
+    def set_control_input_region(
+        self,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+    ) -> None:
+        """Limita l'input della control surface fullscreen al pannello visibile."""
+        self._set_window_input_region(
+            "_control_window", x, y, width, height
+        )
+
+    @Slot(float, float, float, float)
+    def set_floating_input_region(
+        self,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+    ) -> None:
+        """Limita l'input della floating surface fullscreen alla palette visibile."""
+        self._set_window_input_region(
+            "_floating_window", x, y, width, height
+        )
 
     @Slot()
     def minimize_to_floating(self) -> None:
