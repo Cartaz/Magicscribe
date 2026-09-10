@@ -67,6 +67,24 @@ def test_restore_aligns_toolbar_logo_to_current_floating_center() -> None:
     _APP.processEvents()
 
 
+def test_restore_without_visible_floating_palette_does_not_move_toolbar() -> None:
+    control, floating = _windows()
+    coordinator = WindowCoordinator()
+    coordinator.set_control_window(control)
+    coordinator.set_floating_window(floating)
+    coordinator.show_control_panel()
+    _APP.processEvents()
+
+    coordinator.restore_control_panel()
+    assert control.property("layerShellPanelX") == 100.0
+    assert control.property("layerShellPanelY") == 200.0
+
+    coordinator.shutdown()
+    control.deleteLater()
+    floating.deleteLater()
+    _APP.processEvents()
+
+
 def test_input_regions_are_applied_by_the_window_owner() -> None:
     control, floating = _windows()
     coordinator = WindowCoordinator()
