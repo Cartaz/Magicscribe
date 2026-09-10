@@ -4,7 +4,7 @@ MagicScribe is a lightweight, local-first screen annotation tool for KDE Plasma 
 
 ## Supported platform
 
-MagicScribe 2.x has one production platform contract: **KDE Plasma on native Wayland**. Production uses KDE `layer-shell-qt`; X11/XWayland is not a supported fallback. Portable/offscreen Qt top-level components remain only so CI can exercise QML and rendering logic without a compositor.
+MagicScribe 2.x has one production platform contract: **KDE Plasma on native Wayland**. Production uses KDE `layer-shell-qt`; X11/XWayland is not a supported fallback. Portable/offscreen Qt components remain only so CI can exercise QML and rendering logic without a compositor; they use the same fullscreen-host geometry as production rather than a second desktop-window behavior.
 
 Python 3.12, 3.13 and 3.14 are covered by CI. Qt/PySide6 6.11+ is required. Because KDE `layer-shell-qt` uses private QtWayland APIs, `install.sh` requires the PySide6 Qt version to match the system Qt version reported by `qtpaths6`.
 
@@ -20,7 +20,7 @@ QML -> adapters -> AppController -> domain services -> Settings
 
 `AppController` is the only mutable application boundary exposed to UI/native services. It owns drawing/visibility state, stroke history and tool workflows and publishes explicit lifecycle-safe callbacks to the Qt adapters. The core does not import Qt.
 
-Tool metadata and defaults have one canonical declaration in `core.models.TOOL_SPECS`. Settings schema, tool configuration and the QML tool model are derived from those specifications. `Settings` is the sole persisted source of truth for tool selection/configuration; `ToolManager` derives live values instead of caching a second copy.
+Tool capabilities and defaults have one canonical declaration in `core.models.TOOL_SPECS`. Settings schema and tool configuration are derived from those domain specifications, while labels and glyphs remain presentation data in `ui.models.tool_list_model`. `Settings` is the sole persisted source of truth for tool selection/configuration; `ToolManager` derives live values instead of caching a second copy.
 
 `WindowCoordinator` is the sole owner of control/floating `QWindow` objects, input masks and 1:1 minimize/restore geometry. `ShellAdapter` only exposes that public behavior to QML and never reaches into coordinator internals.
 
@@ -77,3 +77,7 @@ The gate verifies native Wayland selection, KDE layer-shell activation, one over
 ## Visual system
 
 The production UI is Qt Quick only. Visual tokens live in `ui/qml/MagicScribe/Theme.qml`: dark surface `#141414`, accent `#ff6600`, Noto Sans and centralized radii/animation timings. Historical QWidget/QSS UI and migration-only compatibility paths are not part of the runtime.
+
+## License
+
+MagicScribe is released under the **MIT License**. You may use, copy, modify, merge, publish, distribute, sublicense and sell the software, provided that the copyright notice and MIT permission notice are retained in copies or substantial portions of the software. See `LICENSE` for the complete terms.
