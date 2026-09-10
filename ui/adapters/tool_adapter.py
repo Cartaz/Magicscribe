@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+
 from PySide6.QtCore import QObject, Property, Signal, Slot
+
 from core.app_controller import AppController
-from core.event_bus import event_bus
 from core.models import ToolType
 
 logger = logging.getLogger(__name__)
@@ -28,32 +29,36 @@ class ToolAdapter(QObject):
         super().__init__(parent)
         self._controller = controller
         self._closed = False
-        event_bus.subscribe("tool_changed", self._on_tool_changed)
-        event_bus.subscribe("tool_config_changed", self._on_tool_config_changed)
+        controller.add_tool_listener(self._on_tool_changed)
+        controller.add_tool_config_listener(self._on_tool_config_changed)
 
     def close(self) -> None:
-        """Rimuove in modo idempotente le subscription possedute dall'adapter."""
         if self._closed:
             return
         self._closed = True
-        event_bus.unsubscribe("tool_changed", self._on_tool_changed)
-        event_bus.unsubscribe("tool_config_changed", self._on_tool_config_changed)
+        self._controller.remove_tool_listener(self._on_tool_changed)
+        self._controller.remove_tool_config_listener(self._on_tool_config_changed)
 
-    def _get_current_tool(self) -> str:
-        return self._controller.get_current_tool().name.lower()
-    currentTool = Property(str, _get_current_tool, notify=currentToolChanged)
-
-    def _get_current_color(self) -> str:
-        return self._controller.get_current_config().color
-    currentColor = Property(str, _get_current_color, notify=configChanged)
-
-    def _get_current_size(self) -> float:
-        return float(self._controller.get_current_config().size)
-    currentSize = Property(float, _get_current_size, notify=configChanged)
-
-    def _get_color_available(self) -> bool:
-        return self._controller.get_current_tool() != ToolType.ERASER
-    colorAvailable = Property(bool, _get_color_available, notify=currentToolChanged)
+    currentTool = Property(
+        str,
+        lambda self: self._controller.get_current_tool().name.lower(),
+        notify=currentToolChanged,
+    )
+    currentColor = Property(
+        str,
+        lambda self: self._controller.get_current_config().color,
+        notify=configChanged,
+    )
+    currentSize = Property(
+        float,
+        lambda self: float(self._controller.get_current_config().size),
+        notify=configChanged,
+    )
+    colorAvailable = Property(
+        bool,
+        lambda self: self._controller.get_current_tool() is not ToolType.ERASER,
+        notify=currentToolChanged,
+    )
 
     @Slot(str)
     def select_tool(self, tool_id: str) -> None:
@@ -65,28 +70,14 @@ class ToolAdapter(QObject):
 
     @Slot(str)
     def set_color(self, color: str) -> None:
-        tool = self._controller.get_current_tool()
-        if tool == ToolType.ERASER:
-            return
-        setting_key = f"{tool.name.lower()}_color"
-        if not self._controller.settings.is_valid(setting_key, color):
-            logger.warning("ToolAdapter: colore non valido: %r", color)
-            return
-        self._controller.tool_manager.set_color(tool, color)
+        self._controller.set_tool_color(color)
 
     @Slot(float)
     def set_size(self, size: float) -> None:
-        tool = self._controller.get_current_tool()
-        setting_key = "eraser_size" if tool == ToolType.ERASER else f"{tool.name.lower()}_size"
-        if not self._controller.settings.is_valid(setting_key, size):
-            logger.warning("ToolAdapter: dimensione fuori range: %r", size)
-            return
-        self._controller.tool_manager.set_size(tool, size)
+        self._controller.set_tool_size(size)
 
-    def _on_tool_changed(self, **_kwargs) -> None:
+    def _on_tool_changed(self) -> None:
         self.currentToolChanged.emit()
-        self.configChanged.emit()
 
-    def _on_tool_config_changed(self, tool_type: ToolType, **_kwargs) -> None:
-        if tool_type == self._controller.get_current_tool():
-            self.configChanged.emit()
+    def _on_tool_config_changed(self) -> None:
+        self.configChanged.emit()
