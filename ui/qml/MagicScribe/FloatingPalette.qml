@@ -56,6 +56,12 @@ Window {
     }
 
     onVisibleChanged: {
+        if (root.visible && root.layerShellFullscreen) {
+            // Minimize in place: start the compact palette where the movable
+            // toolbar host currently lives instead of falling back to (20, 20).
+            paletteHost.x = root.shellAdapter.controlPanelX
+            paletteHost.y = root.shellAdapter.controlPanelY
+        }
         clampPaletteHost()
         syncLayerShellInputRegion()
     }
