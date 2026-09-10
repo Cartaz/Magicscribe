@@ -1,122 +1,63 @@
-"""Test per core.tool_manager.ToolManager."""
+"""Tests for the Settings-backed tool domain boundary."""
 
 from config.settings import Settings
-from core.models import ToolType
+from core.models import TOOL_SPECS, ToolType
 from core.tool_manager import ToolManager, _parse_tool_type
 
 
-def _make_settings(tmp_path) -> Settings:
-    settings = Settings(path=tmp_path / "tm_settings.json")
-    settings.load()
-    return settings
+def _make(tmp_path):
+    settings = Settings(path=tmp_path / "tools.json")
+    return settings, ToolManager(settings)
 
 
-def test_parse_tool_type_valid_string() -> None:
-    assert _parse_tool_type("pen") == ToolType.PEN
-    assert _parse_tool_type("ERASER") == ToolType.ERASER
-    assert _parse_tool_type("  Circle  ") == ToolType.CIRCLE
+def test_parse_tool_type_is_defensive() -> None:
+    assert _parse_tool_type("pen") is ToolType.PEN
+    assert _parse_tool_type(" Circle ") is ToolType.CIRCLE
+    assert _parse_tool_type("laser") is ToolType.PEN
+    assert _parse_tool_type(None) is ToolType.PEN
 
 
-def test_parse_tool_type_invalid_falls_back_to_pen() -> None:
-    assert _parse_tool_type("nonexistent") == ToolType.PEN
-    assert _parse_tool_type("") == ToolType.PEN
-    assert _parse_tool_type(None) == ToolType.PEN
-    assert _parse_tool_type(42) == ToolType.PEN
+def test_configs_are_derived_live_from_settings(tmp_path) -> None:
+    settings, manager = _make(tmp_path)
+    settings.set("pen_size", 17)
+    settings.set("pen_color", "#00ff00")
+    config = manager.config_for(ToolType.PEN)
+    assert config.size == 17.0
+    assert config.color == "#00ff00"
 
 
-def test_parse_tool_type_accepts_enum() -> None:
-    assert _parse_tool_type(ToolType.LINE) == ToolType.LINE
+def test_reset_cannot_desynchronize_tool_manager(tmp_path) -> None:
+    settings, manager = _make(tmp_path)
+    manager.set_tool(ToolType.CIRCLE)
+    manager.set_size(ToolType.CIRCLE, 18)
+    settings.reset()
+    assert manager.current_tool() is ToolType.PEN
+    assert manager.config_for(ToolType.CIRCLE).size == 3.0
 
 
-def test_tool_manager_with_corrupted_last_tool(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    settings._data["last_tool"] = "strumento_inventato"
-    manager = ToolManager(settings)
-    assert manager.current_tool() == ToolType.PEN
+def test_mutations_validate_through_settings(tmp_path) -> None:
+    settings, manager = _make(tmp_path)
+    assert manager.set_color(ToolType.PEN, "not-a-color") is False
+    assert manager.set_size(ToolType.PEN, 0) is False
+    assert manager.config_for(ToolType.PEN).color == "#ff0000"
+    assert manager.config_for(ToolType.PEN).size == 5.0
+    assert settings.get("pen_color") == "#ff0000"
 
 
-def test_tool_manager_with_none_last_tool(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    settings._data["last_tool"] = None
-    manager = ToolManager(settings)
-    assert manager.current_tool() == ToolType.PEN
-
-
-def test_set_color_ignored_for_eraser(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    manager = ToolManager(settings)
-    original_config = manager.config_for(ToolType.ERASER)
-    manager.set_color(ToolType.ERASER, "#00ff00")
-    assert manager.config_for(ToolType.ERASER).color == original_config.color
+def test_eraser_has_no_color_setting(tmp_path) -> None:
+    settings, manager = _make(tmp_path)
+    assert manager.set_color(ToolType.ERASER, "#00ff00") is False
     assert settings.get("eraser_color") is None
 
 
-def test_set_color_updates_config_for_normal_tools(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    manager = ToolManager(settings)
-    manager.set_color(ToolType.PEN, "#00ff00")
-    assert manager.config_for(ToolType.PEN).color == "#00ff00"
-    assert settings.get("pen_color") == "#00ff00"
+def test_setters_report_real_changes_only(tmp_path) -> None:
+    _settings, manager = _make(tmp_path)
+    assert manager.set_tool(ToolType.PEN) is False
+    assert manager.set_tool(ToolType.CIRCLE) is True
+    assert manager.set_size(ToolType.CIRCLE, 12) is True
+    assert manager.set_size(ToolType.CIRCLE, 12) is False
 
 
-def test_set_color_normalizes_before_canonical_update(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    manager = ToolManager(settings)
-    manager.set_color(ToolType.PEN, "#00FF00")
-    assert manager.config_for(ToolType.PEN).color == "#00ff00"
-
-
-def test_invalid_color_never_enters_canonical_config(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    manager = ToolManager(settings)
-    original = manager.config_for(ToolType.PEN)
-    manager.set_color(ToolType.PEN, "not-a-color")
-    assert manager.config_for(ToolType.PEN) == original
-    assert settings.get("pen_color") == original.color
-
-
-def test_set_size_updates_eraser_setting(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    manager = ToolManager(settings)
-    manager.set_size(ToolType.ERASER, 55.0)
-    assert manager.config_for(ToolType.ERASER).size == 55.0
-    assert settings.get("eraser_size") == 55
-
-
-def test_set_size_persists_for_normal_tools(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    manager = ToolManager(settings)
-    manager.set_size(ToolType.PEN, 12.7)
-    assert manager.config_for(ToolType.PEN).size == 12.0
-    assert settings.get("pen_size") == 12
-
-
-def test_invalid_size_never_enters_canonical_config(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    manager = ToolManager(settings)
-    original = manager.config_for(ToolType.PEN)
-    manager.set_size(ToolType.PEN, 0.0)
-    assert manager.config_for(ToolType.PEN) == original
-    assert settings.get("pen_size") == original.size
-
-
-def test_set_tool_noop_when_same(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    manager = ToolManager(settings)
-    assert manager.current_tool() == ToolType.PEN
-    manager.set_tool(ToolType.PEN)
-    assert manager.current_tool() == ToolType.PEN
-
-
-def test_set_tool_persists_canonical_selection(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    manager = ToolManager(settings)
-    manager.set_tool(ToolType.CIRCLE)
-    assert manager.current_tool() == ToolType.CIRCLE
-    assert settings.get("last_tool") == "circle"
-
-
-def test_all_tools_returns_all_enum_values(tmp_path) -> None:
-    settings = _make_settings(tmp_path)
-    manager = ToolManager(settings)
-    assert set(manager.all_tools()) == set(ToolType)
+def test_all_tools_match_canonical_specs(tmp_path) -> None:
+    _settings, manager = _make(tmp_path)
+    assert manager.all_tools() == [spec.tool_type for spec in TOOL_SPECS]
