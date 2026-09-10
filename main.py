@@ -22,7 +22,6 @@ if _is_wayland_session:
     if requested in {"", "xcb"}:
         os.environ["QT_QPA_PLATFORM"] = "wayland"
 
-from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon, QWindow
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 from PySide6.QtQuick import QQuickWindow
@@ -71,17 +70,7 @@ def _setup_logging() -> None:
 
 
 def _set_application_icon(app: QApplication, app_dir: Path) -> None:
-    png_dir = app_dir / "assets" / "icons" / "png"
     svg_path = app_dir / "assets" / "icons" / "magicscribe.svg"
-    if png_dir.exists():
-        icon = QIcon()
-        for size in (16, 22, 24, 32, 48, 64, 128, 256, 512):
-            path = png_dir / f"magicscribe_{size}.png"
-            if path.exists():
-                icon.addFile(str(path), size=QSize(size, size))
-        if not icon.isNull():
-            app.setWindowIcon(icon)
-            return
     if svg_path.exists():
         app.setWindowIcon(QIcon(str(svg_path)))
 
