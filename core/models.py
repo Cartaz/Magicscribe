@@ -31,6 +31,7 @@ class ToolSpec:
 
     tool_type: ToolType
     label: str
+    glyph: str
     default_size: int
     default_color: str | None
 
@@ -52,12 +53,12 @@ class ToolSpec:
 
 
 TOOL_SPECS: tuple[ToolSpec, ...] = (
-    ToolSpec(ToolType.PEN, "Penna", 5, "#ff0000"),
-    ToolSpec(ToolType.ERASER, "Gomma", 40, None),
-    ToolSpec(ToolType.LINE, "Linea", 3, "#27ae60"),
-    ToolSpec(ToolType.RECT, "Rett.", 3, "#ff0000"),
-    ToolSpec(ToolType.CIRCLE, "Cerchio", 3, "#ff8800"),
-    ToolSpec(ToolType.SMOOTH, "Smuss.", 5, "#ff0000"),
+    ToolSpec(ToolType.PEN, "Penna", "P", 5, "#ff0000"),
+    ToolSpec(ToolType.ERASER, "Gomma", "G", 40, None),
+    ToolSpec(ToolType.LINE, "Linea", "/", 3, "#27ae60"),
+    ToolSpec(ToolType.RECT, "Rett.", "[ ]", 3, "#ff0000"),
+    ToolSpec(ToolType.CIRCLE, "Cerchio", "O", 3, "#ff8800"),
+    ToolSpec(ToolType.SMOOTH, "Smuss.", "~", 5, "#ff0000"),
 )
 TOOL_SPEC_BY_TYPE = {spec.tool_type: spec for spec in TOOL_SPECS}
 
