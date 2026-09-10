@@ -19,7 +19,7 @@ if _is_wayland_session:
     if requested in {"", "xcb"}:
         os.environ["QT_QPA_PLATFORM"] = "wayland"
 
-from PySide6.QtCore import QTimer, QSize
+from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon, QWindow
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 from PySide6.QtQuick import QQuickWindow
@@ -175,12 +175,6 @@ def main() -> None:
         )
         overlay_surface.show()
 
-        def ensure_window_order() -> None:
-            overlay_surface.ensure_z_order()
-            window_coordinator.ensure_z_order()
-
-        drawing_adapter.activeChanged.connect(lambda: QTimer.singleShot(50, ensure_window_order))
-
         exit_code = 1
         try:
             engine.loadFromModule("MagicScribe", "WaylandControlPanel")
@@ -203,7 +197,6 @@ def main() -> None:
 
             global_shortcuts.start("")
             tray = TrayIcon(controller, window_coordinator.restore_control_panel)
-            QTimer.singleShot(200, ensure_window_order)
 
             logger.info("Applicazione avviata con shell e overlay Qt Quick")
             exit_code = app.exec()
