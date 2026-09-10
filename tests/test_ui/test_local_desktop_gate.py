@@ -22,6 +22,12 @@ def test_local_desktop_gate_captures_required_evidence() -> None:
         "superfici=${EXPECTED_SCREENS}"
     ) in source
     assert "MagicScribe Overlay NON compare più" in source
+    assert 'section "Toolbar / floating 1:1"' in source
+    assert 'ask "FP1"' in source
+    assert 'ask "FP2"' in source
+    assert "floating icon compare ESATTAMENTE sullo stesso centro" in source
+    assert "floating palette si trascina liberamente" in source
+    assert "logo della toolbar ricompare ESATTAMENTE sul centro" in source
     assert "kscreen-doctor -o" in source
     assert "QT_QPA_PLATFORM=wayland" in source
     assert "env -u QT_QPA_PLATFORM" in source
