@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Interactive native-Wayland parity gate for MagicScribe on CachyOS/KDE/KWin.
-# CI proves portable code paths; this script proves compositor behavior that an
-# offscreen runner cannot observe: layer roles, input regions, focus and Portal.
+# Permanent native-Wayland regression gate for MagicScribe on KDE/KWin.
+# CI covers portable logic; this script covers compositor, input, Portal and lifecycle.
 
 set -Eeuo pipefail
 
@@ -25,48 +24,27 @@ EXPECTED_SCREENS=0
 mkdir -p "${REPORT_DIR}"
 : > "${REPORT_FILE}"
 
-log() {
-    printf '%s\n' "$*" | tee -a "${REPORT_FILE}"
-}
-
-section() {
-    log ""
-    log "=== $* ==="
-}
+log() { printf '%s\n' "$*" | tee -a "${REPORT_FILE}"; }
+section() { log ""; log "=== $* ==="; }
 
 cleanup() {
     if [[ -n "${APP_PID}" ]] && kill -0 "${APP_PID}" 2>/dev/null; then
         kill "${APP_PID}" 2>/dev/null || true
-        for _ in {1..30}; do
-            kill -0 "${APP_PID}" 2>/dev/null || break
-            sleep 0.1
-        done
+        sleep 0.3
         kill -KILL "${APP_PID}" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT INT TERM
 
 ask() {
-    local id="$1"
-    local prompt="$2"
-    local answer
+    local id="$1" prompt="$2" answer
     while true; do
-        printf '\n[%s] %s\n' "${id}" "${prompt}"
-        printf 'Risultato [y=PASS / n=FAIL / k=SKIP]: '
+        printf '\n[%s] %s\nRisultato [y=PASS / n=FAIL / k=SKIP]: ' "${id}" "${prompt}"
         IFS= read -r answer
         case "${answer,,}" in
-            y|yes|s|si|sì)
-                log "${id}: PASS"
-                return 0
-                ;;
-            n|no)
-                log "${id}: FAIL"
-                return 1
-                ;;
-            k|skip)
-                log "${id}: SKIP"
-                return 0
-                ;;
+            y|yes|s|si|sì) log "${id}: PASS"; return 0 ;;
+            n|no) log "${id}: FAIL"; return 1 ;;
+            k|skip) log "${id}: SKIP"; return 0 ;;
             *) printf 'Risposta non valida.\n' ;;
         esac
     done
@@ -74,8 +52,7 @@ ask() {
 
 snapshot_run_log() {
     if [[ -f "${APP_LOG}" ]]; then
-        tail -c "+$((RUN_LOG_OFFSET + 1))" "${APP_LOG}" 2>/dev/null \
-            > "${CURRENT_RUN_LOG}" || true
+        tail -c "+$((RUN_LOG_OFFSET + 1))" "${APP_LOG}" > "${CURRENT_RUN_LOG}" 2>/dev/null || true
     else
         : > "${CURRENT_RUN_LOG}"
     fi
@@ -84,7 +61,7 @@ snapshot_run_log() {
 show_current_run_log() {
     snapshot_run_log
     log "Estratto log run ${RUN_INDEX}:"
-    tail -n 120 "${CURRENT_RUN_LOG}" | tee -a "${REPORT_FILE}" || true
+    tail -n 100 "${CURRENT_RUN_LOG}" | tee -a "${REPORT_FILE}" || true
 }
 
 start_app() {
@@ -99,13 +76,10 @@ start_app() {
     if [[ "${mode}" == "noportal" ]]; then
         env -u QT_QPA_PLATFORM \
             DBUS_SESSION_BUS_ADDRESS="unix:path=${REPORT_DIR}/missing-session-bus" \
-            "${PYTHON}" "${ROOT_DIR}/main.py" \
-            >"${CURRENT_CONSOLE_LOG}" 2>&1 &
+            "${PYTHON}" "${ROOT_DIR}/main.py" >"${CURRENT_CONSOLE_LOG}" 2>&1 &
     else
-        # Il gate deve provare la scelta automatica del backend nativo.
         env -u QT_QPA_PLATFORM \
-            "${PYTHON}" "${ROOT_DIR}/main.py" \
-            >"${CURRENT_CONSOLE_LOG}" 2>&1 &
+            "${PYTHON}" "${ROOT_DIR}/main.py" >"${CURRENT_CONSOLE_LOG}" 2>&1 &
     fi
     APP_PID=$!
     log "MagicScribe avviato: pid=${APP_PID}, mode=${mode}, run=${RUN_INDEX}"
@@ -117,45 +91,27 @@ start_app() {
             return 1
         fi
         snapshot_run_log
-        if grep -q "Applicazione avviata con shell e overlay Qt Quick" \
-            "${CURRENT_RUN_LOG}"; then
+        if grep -q "Applicazione avviata con shell e overlay Qt Quick" "${CURRENT_RUN_LOG}"; then
             log "STARTUP: PASS"
             return 0
         fi
         sleep 0.1
     done
-
     log "STARTUP: FAIL — timeout"
     show_current_run_log
-    cat "${CURRENT_CONSOLE_LOG}" | tee -a "${REPORT_FILE}" || true
     return 1
-}
-
-stop_app_forcefully() {
-    if [[ -n "${APP_PID}" ]] && kill -0 "${APP_PID}" 2>/dev/null; then
-        kill "${APP_PID}" 2>/dev/null || true
-        for _ in {1..50}; do
-            kill -0 "${APP_PID}" 2>/dev/null || break
-            sleep 0.1
-        done
-        kill -KILL "${APP_PID}" 2>/dev/null || true
-    fi
-    APP_PID=""
 }
 
 wait_portal_result() {
     local id="$1"
     for _ in {1..150}; do
         snapshot_run_log
-        if grep -q "Global shortcuts registrate tramite XDG Desktop Portal" \
-            "${CURRENT_RUN_LOG}"; then
+        if grep -q "Global shortcuts registrate tramite XDG Desktop Portal" "${CURRENT_RUN_LOG}"; then
             log "${id}: PASS"
             return 0
         fi
         if grep -q "Global shortcuts non attive:" "${CURRENT_RUN_LOG}"; then
             log "${id}: FAIL"
-            grep "Global shortcuts non attive:" "${CURRENT_RUN_LOG}" \
-                | tail -n 1 | tee -a "${REPORT_FILE}" || true
             return 1
         fi
         sleep 0.1
@@ -167,17 +123,16 @@ wait_portal_result() {
 capture_pss() {
     local label="$1"
     if [[ -z "${APP_PID}" || ! -r "/proc/${APP_PID}/smaps_rollup" ]]; then
-        log "PSS_${label}: FAIL — /proc/${APP_PID:-none}/smaps_rollup non disponibile"
+        log "PSS_${label}: FAIL — smaps_rollup non disponibile"
         return 1
     fi
     log "PSS ${label} (pid=${APP_PID}):"
-    grep -E '^(Pss|Pss_Anon):' "/proc/${APP_PID}/smaps_rollup" \
-        | tee -a "${REPORT_FILE}" || true
+    grep -E '^(Pss|Pss_Anon):' "/proc/${APP_PID}/smaps_rollup" | tee -a "${REPORT_FILE}" || true
 }
 
 graceful_quit_check() {
     local id="$1"
-    printf '\nPorta il focus sulla toolbar e premi Ctrl+Q, poi torna qui e premi Invio...'
+    printf '\nPorta il focus sulla toolbar, premi Ctrl+Q, poi torna qui e premi Invio...'
     IFS= read -r _
     for _ in {1..50}; do
         if ! kill -0 "${APP_PID}" 2>/dev/null; then
@@ -188,7 +143,8 @@ graceful_quit_check() {
         sleep 0.1
     done
     log "${id}: FAIL — processo ancora vivo dopo 5 secondi"
-    stop_app_forcefully
+    cleanup
+    APP_PID=""
     return 1
 }
 
@@ -200,7 +156,6 @@ if command -v git >/dev/null 2>&1; then
     log "commit: $(git rev-parse HEAD 2>/dev/null || true)"
     if [[ -n "$(git status --porcelain 2>/dev/null || true)" ]]; then
         log "WORKTREE: FAIL — working tree non pulito"
-        git status --short | tee -a "${REPORT_FILE}"
     else
         log "WORKTREE: PASS"
     fi
@@ -208,27 +163,17 @@ fi
 
 log "XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-<unset>}"
 log "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>}"
-log "QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-<unset>}"
-log "XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-<unset>}"
-if [[ "${XDG_SESSION_TYPE:-}" == "wayland" && -n "${WAYLAND_DISPLAY:-}" ]]; then
-    log "SESSION_WAYLAND: PASS"
-else
+if [[ "${XDG_SESSION_TYPE:-}" != "wayland" || -z "${WAYLAND_DISPLAY:-}" ]]; then
     log "SESSION_WAYLAND: FAIL — eseguire da KDE Plasma Wayland"
     exit 2
 fi
-
-if command -v kscreen-doctor >/dev/null 2>&1; then
-    log "KScreen outputs:"
-    kscreen-doctor -o 2>&1 | tee -a "${REPORT_FILE}" || true
-fi
+log "SESSION_WAYLAND: PASS"
+command -v kscreen-doctor >/dev/null 2>&1 && kscreen-doctor -o 2>&1 | tee -a "${REPORT_FILE}" || true
 
 section "Install / layer-shell preflight"
 bash "${ROOT_DIR}/install.sh" | tee -a "${REPORT_FILE}"
-"${PYTHON}" "${ROOT_DIR}/scripts/verify_release_constraints.py" \
-    | tee -a "${REPORT_FILE}"
-
-EXPECTED_SCREENS="$(
-    QT_QPA_PLATFORM=wayland "${PYTHON}" - <<'PY'
+"${PYTHON}" -m pip check | tee -a "${REPORT_FILE}"
+EXPECTED_SCREENS="$(QT_QPA_PLATFORM=wayland "${PYTHON}" - <<'PY'
 from PySide6.QtGui import QGuiApplication
 app = QGuiApplication([])
 print(len(app.screens()))
@@ -242,66 +187,48 @@ else
 fi
 
 section "Run 1 — layer-shell + XDG GlobalShortcuts"
-log "Se KDE mostra il dialog GlobalShortcuts, ACCETTA le cinque scorciatoie."
+log "Se KDE mostra il dialog GlobalShortcuts, accetta le cinque scorciatoie."
 start_app normal
-printf '\nGestisci ora l\047eventuale dialog KDE, poi premi Invio...'
+printf '\nGestisci l\047eventuale dialog KDE, poi premi Invio...'
 IFS= read -r _
 sleep 0.3
 show_current_run_log
 
-if grep -q "Piattaforma Qt effettiva: wayland" "${CURRENT_RUN_LOG}" \
-    && grep -q "Backend Wayland nativo attivo" "${CURRENT_RUN_LOG}"; then
-    log "ENV_QPA: PASS"
-else
-    log "ENV_QPA: FAIL"
-fi
-
-if grep -q "KDE layer-shell-qt abilitato" "${CURRENT_RUN_LOG}"; then
-    log "LAYER_SHELL_RUNTIME: PASS"
-else
-    log "LAYER_SHELL_RUNTIME: FAIL"
-fi
-
-if grep -q \
-    "Overlay avviato: backend=wayland, ruolo=layer-shell/top, superfici=${EXPECTED_SCREENS}" \
-    "${CURRENT_RUN_LOG}"; then
-    log "OVERLAY_SURFACES: PASS"
-else
-    log "OVERLAY_SURFACES: FAIL — attese ${EXPECTED_SCREENS} layer-surface"
-fi
+grep -q "Piattaforma Qt effettiva: wayland" "${CURRENT_RUN_LOG}" \
+    && log "ENV_QPA: PASS" || log "ENV_QPA: FAIL"
+grep -q "Backend Wayland nativo attivo" "${CURRENT_RUN_LOG}" \
+    && log "WAYLAND_RUNTIME: PASS" || log "WAYLAND_RUNTIME: FAIL"
+grep -q "KDE layer-shell-qt abilitato" "${CURRENT_RUN_LOG}" \
+    && log "LAYER_SHELL_RUNTIME: PASS" || log "LAYER_SHELL_RUNTIME: FAIL"
+grep -q "Overlay avviato: backend=wayland, ruolo=layer-shell/top, superfici=${EXPECTED_SCREENS}" \
+    "${CURRENT_RUN_LOG}" && log "OVERLAY_SURFACES: PASS" || log "OVERLAY_SURFACES: FAIL"
 
 PORTAL_OK=false
-if wait_portal_result "PORTAL_GLOBAL"; then
-    PORTAL_OK=true
-fi
-
+if wait_portal_result "PORTAL_GLOBAL"; then PORTAL_OK=true; fi
 capture_pss "idle" || true
 
 section "Layer roles / focus"
 ask "LS1" "La toolbar resta visibile SOPRA le normali finestre anche cambiando app?" || true
-ask "LS2" "La toolbar si può trascinare liberamente dal logo senza sparire o perdere interazione?" || true
-ask "LS3" "La floating palette resta sopra le normali finestre quando la toolbar è ridotta?" || true
+ask "LS2" "La toolbar si trascina liberamente dal logo senza salto o perdita di interazione?" || true
+ask "LS3" "La floating palette resta sopra le normali finestre?" || true
 ask "LS4" "MagicScribe Overlay NON compare più nell'elenco Alt+Tab/task switcher?" || true
 
 section "Toolbar / floating 1:1"
-log "Per FP1 sposta prima la toolbar in una posizione ben riconoscibile."
-ask "FP1" "Riducendo la toolbar dal logo, la floating icon compare ESATTAMENTE sullo stesso centro, senza salto o offset visibile?" || true
-log "Per FP2 lascia la palette ridotta, trascinala in un punto molto diverso e poi cliccala per riaprire."
-ask "FP2" "La floating palette si trascina liberamente e, riaprendo, il logo della toolbar ricompare ESATTAMENTE sul centro dell'icona appena cliccata?" || true
+ask "FP1" "Riducendo la toolbar, la floating icon compare ESATTAMENTE sullo stesso centro del logo?" || true
+ask "FP2" "La floating palette si trascina liberamente e il logo della toolbar ricompare ESATTAMENTE sul centro dell'icona al restore?" || true
 
 section "Overlay input region"
-ask "OV1" "Con disegno DISATTIVATO, click e scroll raggiungono subito desktop/app sottostante senza Alt+Tab?" || true
-ask "OV2" "Attivando il disegno, l'overlay cattura il puntatore e impedisce click accidentali all'app sottostante?" || true
-ask "OV3" "Disattivando di nuovo il disegno, il desktop torna interattivo IMMEDIATAMENTE senza cambio focus?" || true
-ask "OV4" "Ripetendo almeno 10 volte attiva/disattiva, click-through e cattura restano stabili?" || true
+ask "OV1" "Con disegno OFF, click e scroll raggiungono subito desktop/app sottostante?" || true
+ask "OV2" "Con disegno ON, l'overlay cattura correttamente il puntatore?" || true
+ask "OV3" "Tornando OFF, il desktop è interattivo IMMEDIATAMENTE senza cambio focus?" || true
+ask "OV4" "Dopo almeno 10 toggle ON/OFF, cattura e click-through restano stabili?" || true
 
 section "Global shortcuts fuori focus"
 if [[ "${PORTAL_OK}" == true ]]; then
-    log "Porta il focus su un'altra applicazione prima di ogni prova."
-    ask "GS1" "F9 attiva/disattiva il disegno con MagicScribe NON focalizzato?" || true
-    ask "GS2" "Ctrl+Shift+F9 mostra/nasconde le annotazioni con MagicScribe NON focalizzato?" || true
-    ask "GS3" "F8 e Shift+F8 eseguono undo/redo con MagicScribe NON focalizzato?" || true
-    ask "GS4" "Shift+F9 cancella le annotazioni con MagicScribe NON focalizzato?" || true
+    ask "GS1" "F9 funziona con MagicScribe NON focalizzato?" || true
+    ask "GS2" "Ctrl+Shift+F9 funziona con MagicScribe NON focalizzato?" || true
+    ask "GS3" "F8 e Shift+F8 eseguono undo/redo fuori focus?" || true
+    ask "GS4" "Shift+F9 cancella le annotazioni fuori focus?" || true
 else
     log "GS1: SKIP — Portal non registrato"
     log "GS2: SKIP — Portal non registrato"
@@ -310,15 +237,15 @@ else
 fi
 
 section "Drawing parity"
-ask "DR1" "Penna e Smooth disegnano correttamente?" || true
+ask "DR1" "Penna e Smooth disegnano correttamente e restano visivamente distinti?" || true
 ask "DR2" "Linea, rettangolo e cerchio hanno preview e commit corretti?" || true
 ask "DR3" "La gomma cancella correttamente e il cursore cambia in modo coerente?" || true
 ask "DR4" "Undo, redo, clear e visibility restano coerenti dopo più tratti?" || true
 
 section "Multi-monitor"
 if [[ "${EXPECTED_SCREENS}" -gt 1 ]]; then
-    ask "MM1" "Ogni monitor è coperto dall'overlay e resta click-through quando il disegno è off?" || true
-    ask "MM2" "Puoi disegnare su ogni monitor mantenendo i tratti nella posizione corretta?" || true
+    ask "MM1" "Ogni monitor è coperto e click-through quando il disegno è OFF?" || true
+    ask "MM2" "Il disegno mantiene coordinate corrette passando tra monitor?" || true
     ask "MM3" "Undo/redo/visibility non spostano o duplicano tratti fra monitor?" || true
 else
     log "MM1: N/A — un solo QScreen"
@@ -332,15 +259,12 @@ IFS= read -r _
 capture_pss "after_20_additional_strokes" || true
 graceful_quit_check "LC1" || true
 
-section "Run 2 — forced Portal-unavailable local fallback"
+section "Run 2 — Portal forzatamente non disponibile"
 start_app noportal
 sleep 0.5
 show_current_run_log
-if grep -q "Piattaforma Qt effettiva: wayland" "${CURRENT_RUN_LOG}"; then
-    log "ENV_QPA_RUN2: PASS"
-else
-    log "ENV_QPA_RUN2: FAIL"
-fi
+grep -q "Piattaforma Qt effettiva: wayland" "${CURRENT_RUN_LOG}" \
+    && log "ENV_QPA_RUN2: PASS" || log "ENV_QPA_RUN2: FAIL"
 if grep -q "Global shortcuts non attive:" "${CURRENT_RUN_LOG}"; then
     log "FORCED_FALLBACK_PATH: PASS"
     ask "FB1" "Con toolbar focalizzata, F9 funziona come WindowShortcut locale?" || true
@@ -351,9 +275,7 @@ fi
 graceful_quit_check "LC2" || true
 
 section "Final evidence"
-if [[ -f "${APP_LOG}" ]]; then
-    cp -f "${APP_LOG}" "${REPORT_DIR}/magicscribe-full.log"
-fi
+[[ -f "${APP_LOG}" ]] && cp -f "${APP_LOG}" "${REPORT_DIR}/magicscribe-full.log"
 pass_count="$(grep -c ': PASS' "${REPORT_FILE}" || true)"
 fail_count="$(grep -c ': FAIL' "${REPORT_FILE}" || true)"
 skip_count="$(grep -c ': SKIP' "${REPORT_FILE}" || true)"
@@ -362,12 +284,11 @@ log "Risultati: PASS=${pass_count} FAIL=${fail_count} SKIP=${skip_count} N/A=${n
 log "Report completo: ${REPORT_FILE}"
 
 if [[ "${fail_count}" -gt 0 ]]; then
-    log "GATE: FAIL — non chiudere issue #24 e non mergeare PR #25."
+    log "GATE: FAIL — regressione desktop rilevata."
     exit 2
 fi
 if [[ "${skip_count}" -gt 0 ]]; then
     log "GATE: INCOMPLETO — restano verifiche SKIP."
     exit 3
 fi
-
-log "GATE: PASS — nessun FAIL/SKIP; revisionare il report prima del merge di PR #25."
+log "GATE: PASS — nessun FAIL/SKIP."
