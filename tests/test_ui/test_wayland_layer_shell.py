@@ -118,6 +118,14 @@ def test_wayland_floating_drag_moves_item_inside_stationary_surface() -> None:
     assert "root.shellAdapter.controlPanelX" not in floating
     assert "root.shellAdapter.controlPanelY" not in floating
 
+    # Restore is the exact inverse: move toolbarHost so its logo center matches
+    # the current floating icon center before showing the control panel again.
+    assert "def _floating_palette_center(" in shell_adapter
+    assert "def _align_control_logo_to_floating(" in shell_adapter
+    assert "self._align_control_logo_to_floating()" in shell_adapter
+    assert 'control.setProperty(\n            "layerShellPanelX"' in shell_adapter
+    assert 'control.setProperty(\n            "layerShellPanelY"' in shell_adapter
+
 
 def test_qmldir_exports_wayland_components() -> None:
     qmldir = (QML_DIR / "qmldir").read_text(encoding="utf-8")
