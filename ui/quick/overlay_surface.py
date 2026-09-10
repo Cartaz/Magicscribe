@@ -21,7 +21,6 @@ from PySide6.QtQuick import QQuickWindow
 
 from ui.adapters.drawing_adapter import DrawingAdapter
 from ui.adapters.tool_adapter import ToolAdapter
-from ui.native.x11_input_shape import set_x11_click_through
 from ui.quick.drawing_canvas import DrawingCanvas
 
 logger = logging.getLogger(__name__)
@@ -60,10 +59,10 @@ class _OverlayView:
 class OverlaySurface:
     """Possiede le finestre overlay e la loro policy di input/rendering.
 
-    X11/offscreen usa una singola finestra sul desktop virtuale. Wayland nativo
-    usa una layer-surface per ogni QScreen: il compositor possiede stacking e
-    geometria, mentre tutte le canvas leggono/scrivono nello stesso spazio di
-    coordinate globali del desktop.
+    Il percorso di produzione Wayland usa una layer-surface per ogni QScreen: il
+    compositor possiede stacking e geometria, mentre tutte le canvas leggono e
+    scrivono nello stesso spazio di coordinate globali. Il percorso Qt top-level
+    rimane soltanto per backend portabili/offscreen usati dai test.
     """
 
     def __init__(
@@ -230,7 +229,7 @@ class OverlaySurface:
         if screen is not None:
             window.setScreen(screen)
 
-        if _platform_name() != "xcb" and not self._drawing_adapter.active:
+        if not self._drawing_adapter.active:
             window.setFlag(Qt.WindowType.WindowTransparentForInput, True)
 
         content = window.contentItem()
@@ -329,16 +328,8 @@ class OverlaySurface:
     def _sync_input_mode(self) -> None:
         """Alterna click-through e cattura input su tutte le superfici."""
         click_through = not self._drawing_adapter.active
-
         for view in self._views:
-            if _platform_name() == "xcb":
-                if set_x11_click_through(int(view.window.winId()), click_through):
-                    continue
-                logger.warning(
-                    "X11 input shape non disponibile; uso il fallback Qt per l'overlay"
-                )
             self._set_qt_input_transparency(view.window, click_through)
-
         self._sync_cursor()
 
     @staticmethod
