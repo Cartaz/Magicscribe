@@ -34,17 +34,19 @@ Updating Qt on the native Wayland path requires extra care: KDE `layer-shell-qt`
 
 ## Native Wayland architecture
 
-On a Wayland session MagicScribe selects Qt's native `wayland` QPA by default. An explicit environment override such as `QT_QPA_PLATFORM=xcb` remains only as a diagnostic rollback until the target KDE/KWin parity gate in GitHub issue #24 is complete.
+On a Wayland session MagicScribe uses Qt's native `wayland` QPA. The temporary `xcb`/XWayland diagnostic rollback used during migration has been retired after the physical KDE/KWin parity gate passed.
 
 The first native prototype used ordinary XDG Shell top-level windows. Real testing on the target KDE/KWin desktop rejected that design: the fullscreen transparent drawing window appeared in the task switcher, could retain desktop interaction/focus after drawing was disabled, the toolbar was not reliably above ordinary windows, and the shell could not provide the positioning/drag semantics MagicScribe needs.
 
-The native design therefore uses KDE `layer-shell-qt`, which exposes the Wayland layer-shell protocol to Qt/QML. One drawing layer-surface is created per `QScreen` on the **Top** layer. The control panel and floating palette use the **Overlay** layer, so they remain above the drawing surface. The drawing surface has no keyboard interactivity; the control panel requests keyboard interaction only on demand, while the floating palette requests none.
+The production design therefore uses KDE `layer-shell-qt`, which exposes the Wayland layer-shell protocol to Qt/QML. One drawing layer-surface is created per `QScreen` on the **Top** layer. The control panel and floating palette use the **Overlay** layer, so they remain above the drawing surface. The drawing surface has no keyboard interactivity; the control panel requests keyboard interaction only on demand, while the floating palette requests none.
 
 Every `DrawingCanvas` maps local pointer coordinates into one canonical global desktop coordinate space before committing strokes and translates that history back into screen-local painter coordinates when rendering. Undo/redo/clear/visibility therefore remain single-owner operations in Python regardless of which monitor received the gesture.
 
-Layer-shell windows are positioned by compositor-owned anchors and margins. The toolbar and floating palette are dragged by updating those margins; `QWindow.startSystemMove()` remains only on the ordinary X11/offscreen window path. No absolute top-level positioning is emulated on native Wayland.
+The control panel and floating palette each use a stationary fullscreen layer-surface with a small movable internal host (`toolbarHost` / `paletteHost`). `QWindow.setMask()` restricts input to the visible host, so the rest of each fullscreen control surface is click-through. Dragging moves only the internal host and never rewrites layer-shell margins during the pointer gesture.
 
-Native click-through still uses Qt's `WindowTransparentForInput`, which maps to the Wayland surface input region. `ui/native/x11_input_shape.py` is retained only for an explicit xcb/XWayland rollback and must not be removed until the physical KWin parity gate is green.
+Minimize/restore is positionally 1:1: the floating icon appears with its center exactly on the toolbar logo, and restoring after moving the floating icon repositions the toolbar so its logo reappears exactly under that icon.
+
+Native click-through uses Qt's `WindowTransparentForInput`, which maps to the Wayland surface input region. Runtime changes call `requestUpdate()` so the new region is committed immediately and desktop interaction is restored without a focus change.
 
 ## Local desktop parity harness
 
@@ -54,18 +56,18 @@ Run the acceptance harness from the target CachyOS/KDE Plasma Wayland session:
 bash scripts/local_desktop_gate.sh
 ```
 
-The harness runs `install.sh` first, so it verifies the system `layer-shell-qt` QML module and Qt ABI before starting the application. It then verifies the effective Wayland QPA, layer-shell runtime activation, one drawing surface per `QScreen`, the final XDG GlobalShortcuts registration result, Linux PSS from `/proc/<pid>/smaps_rollup`, and guides the physical checks for stacking, Alt+Tab exclusion, toolbar dragging, click-through/input capture, drawing parity, multi-monitor behavior and lifecycle.
+The harness runs `install.sh` first, so it verifies the system `layer-shell-qt` QML module and Qt ABI before starting the application. It then verifies the effective Wayland QPA, layer-shell runtime activation, one drawing surface per `QScreen`, the final XDG GlobalShortcuts registration result, Linux PSS from `/proc/<pid>/smaps_rollup`, and guides the physical checks for stacking, Alt+Tab exclusion, toolbar/floating dragging, 1:1 minimize/restore, click-through/input capture, drawing parity, multi-monitor behavior and lifecycle.
 
-A real manual `SKIP` leaves the gate incomplete. Conditions that genuinely do not apply to the machine, such as multi-monitor checks on a single-monitor desktop, are recorded as `N/A`. The report must contain no `FAIL` or `SKIP` before issue #24 is closed and PR #25 is merged.
+A real manual `SKIP` leaves the gate incomplete. Conditions that genuinely do not apply to the machine, such as multi-monitor checks on a single-monitor desktop, are recorded as `N/A`. The final target-desktop validation completed with no `FAIL` or `SKIP`.
 
 ## Platform policy
 
 The production shell and overlay are Qt Quick only; the historical QWidget shell/overlay and its QSS theme have been removed.
 
-Native Wayland plus KDE layer-shell is the target architecture for Plasma. X11-specific code is no longer part of the default Wayland execution path and is retained temporarily only to provide a controlled rollback during parity validation.
+Native Wayland plus KDE layer-shell is the supported production architecture for Plasma. The former X11 input-shape compatibility module and explicit XWayland rollback are no longer part of the codebase. The ordinary Qt top-level path remains only to support portable/offscreen CI tests.
 
 ## Visual system
 
 Production QML uses the dark-neumorphic tokens centralized in `ui/qml/MagicScribe/Theme.qml`: surface `#141414`, accent `#ff6600`, Noto Sans, radii `28 / 22 / 16 / 12`.
 
-The primary control shell is a compact frameless vertical toolbar. Clicking the MagicScribe icon reduces it to the small draggable `FloatingPalette`; clicking that palette restores the toolbar. Tool state, drawing state and configuration remain owned by Python and are only presented through the existing QML adapters.
+The primary control shell is a compact frameless vertical toolbar. Clicking the MagicScribe icon reduces it to the small draggable `FloatingPalette`; clicking that palette restores the toolbar with 1:1 positional correspondence. Tool state, drawing state and configuration remain owned by Python and are only presented through the existing QML adapters.
