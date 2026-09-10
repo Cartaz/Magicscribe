@@ -58,8 +58,9 @@ Window {
     onVisibleChanged: {
         if (root.visible && root.layerShellFullscreen) {
             // Collasso 1:1: il centro della palette ridotta coincide esattamente
-            // con il centro del logo premuto nella toolbar. La toolbar resta
-            // ferma nella sua posizione e verra' semplicemente rimostrata al restore.
+            // con il centro del logo premuto nella toolbar. Al restore il verso
+            // opposto viene applicato da ShellAdapter, spostando toolbarHost in
+            // modo che il logo riappaia sul centro corrente della floating icon.
             paletteHost.x = root.shellAdapter.controlLogoCenterX
                             - paletteHost.width / 2
             paletteHost.y = root.shellAdapter.controlLogoCenterY
