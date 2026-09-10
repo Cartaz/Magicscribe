@@ -70,9 +70,9 @@ def test_dead_cross_cutting_abstractions_are_removed() -> None:
 
 
 def test_dependency_metadata_is_consolidated() -> None:
-    assert (ROOT / "pyproject.toml").is_file()
+    assert (ROOT / "requirements.txt").is_file()
     for relative in (
-        "requirements.txt",
+        "pyproject.toml",
         "requirements-dev.txt",
         "constraints-release.txt",
         "constraints-ci.txt",
