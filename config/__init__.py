@@ -1,22 +1,12 @@
-"""Configurazione centralizzata di MagicScribe.
+"""Centralized runtime configuration for MagicScribe."""
 
-Espone costanti runtime e impostazioni persistenti.
-"""
-
-from config.constants import (
-    AppMeta,
-    HotkeyDefaults,
-    ToolDefaults,
-    PathDefaults,
-    LogDefaults,
-)
+from config.constants import AppMeta, HotkeyDefaults, LogDefaults, PathDefaults
 from config.settings import Settings
 
 __all__ = [
     "AppMeta",
     "HotkeyDefaults",
-    "ToolDefaults",
-    "PathDefaults",
     "LogDefaults",
+    "PathDefaults",
     "Settings",
 ]
