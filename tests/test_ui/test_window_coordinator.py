@@ -1,74 +1,85 @@
-"""Test della policy di posizionamento delle finestre shell."""
+"""Behavioral tests for the Wayland shell window owner."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, QSize
+import os
 
-import ui.native.window_coordinator as window_coordinator_module
-from ui.native.window_coordinator import WindowCoordinator, _clamp_position_to_geometry
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtQuick import QQuickWindow
+from PySide6.QtWidgets import QApplication
 
-def test_clamp_keeps_window_inside_positive_geometry() -> None:
-    geometry = QRect(0, 0, 1920, 1080)
-    size = QSize(104, 700)
+from ui.native.window_coordinator import WindowCoordinator
 
-    assert _clamp_position_to_geometry(QPoint(-50, -20), size, geometry) == QPoint(0, 0)
-    assert _clamp_position_to_geometry(QPoint(1900, 1000), size, geometry) == QPoint(1816, 380)
+_APP = QApplication.instance() or QApplication([])
 
 
-def test_clamp_supports_negative_monitor_coordinates() -> None:
-    geometry = QRect(-1920, 0, 1920, 1080)
-    size = QSize(58, 58)
-
-    assert _clamp_position_to_geometry(QPoint(-2100, 1200), size, geometry) == QPoint(-1920, 1022)
-    assert _clamp_position_to_geometry(QPoint(-300, 200), size, geometry) == QPoint(-300, 200)
-
-
-def test_clamp_pins_oversized_window_to_geometry_origin() -> None:
-    geometry = QRect(100, 50, 80, 60)
-    size = QSize(104, 700)
-
-    assert _clamp_position_to_geometry(QPoint(999, 999), size, geometry) == QPoint(100, 50)
+def _windows() -> tuple[QQuickWindow, QQuickWindow]:
+    control = QQuickWindow()
+    control.setProperty("layerShellPanelX", 100.0)
+    control.setProperty("layerShellPanelY", 200.0)
+    floating = QQuickWindow()
+    floating.setProperty("layerShellPaletteX", 371.0)
+    floating.setProperty("layerShellPaletteY", 571.0)
+    floating.setProperty("paletteWidth", 58.0)
+    floating.setProperty("paletteHeight", 58.0)
+    return control, floating
 
 
-def test_native_wayland_delegates_top_level_positioning_to_compositor(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        window_coordinator_module,
-        "_platform_name",
-        lambda: "wayland",
-    )
-    assert window_coordinator_module._supports_absolute_top_level_positioning() is False
-
-
-def test_xcb_keeps_absolute_top_level_positioning(monkeypatch) -> None:
-    monkeypatch.setattr(
-        window_coordinator_module,
-        "_platform_name",
-        lambda: "xcb",
-    )
-    assert window_coordinator_module._supports_absolute_top_level_positioning() is True
-
-
-def test_native_wayland_does_not_fight_layer_shell_z_order(monkeypatch) -> None:
-    monkeypatch.setattr(
-        window_coordinator_module,
-        "_platform_name",
-        lambda: "wayland",
-    )
+def test_minimize_and_restore_own_visibility_transition() -> None:
+    control, floating = _windows()
     coordinator = WindowCoordinator()
+    coordinator.set_control_window(control)
+    coordinator.set_floating_window(floating)
 
-    class _VisibleWindow:
-        def isVisible(self) -> bool:
-            return True
+    coordinator.show_control_panel()
+    coordinator.minimize_to_floating()
+    assert control.isVisible() is False
+    assert floating.isVisible() is True
 
-        def raise_(self) -> None:
-            raise AssertionError("raise_ must not be used for a layer-surface")
+    coordinator.restore_control_panel()
+    assert control.isVisible() is True
+    assert floating.isVisible() is False
 
-        def requestActivate(self) -> None:
-            raise AssertionError("requestActivate must not be used for layer stacking")
+    coordinator.shutdown()
+    control.deleteLater()
+    floating.deleteLater()
+    _APP.processEvents()
 
-    coordinator._control_window = _VisibleWindow()
-    coordinator._floating_window = _VisibleWindow()
-    coordinator.ensure_z_order()
+
+def test_restore_aligns_toolbar_logo_to_current_floating_center() -> None:
+    control, floating = _windows()
+    coordinator = WindowCoordinator()
+    coordinator.set_control_window(control)
+    coordinator.set_floating_window(floating)
+    floating.show()
+    _APP.processEvents()
+
+    # Senza un QML child materializzato il fallback del logo è panel + (52, 50).
+    # Il centro floating è (400, 600), quindi panel deve diventare (348, 550).
+    coordinator.restore_control_panel()
+    assert control.property("layerShellPanelX") == 348.0
+    assert control.property("layerShellPanelY") == 550.0
+
+    coordinator.shutdown()
+    control.deleteLater()
+    floating.deleteLater()
+    _APP.processEvents()
+
+
+def test_input_regions_are_applied_by_the_window_owner() -> None:
+    control, floating = _windows()
+    coordinator = WindowCoordinator()
+    coordinator.set_control_window(control)
+    coordinator.set_floating_window(floating)
+    coordinator.set_control_input_region(10, 20, 100, 200)
+    coordinator.set_floating_input_region(30, 40, 58, 58)
+    _APP.processEvents()
+
+    assert not control.mask().isEmpty()
+    assert not floating.mask().isEmpty()
+
+    coordinator.shutdown()
+    control.deleteLater()
+    floating.deleteLater()
+    _APP.processEvents()
