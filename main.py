@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+# Qt must be imported only after QT_QPA_PLATFORM is selected below.
+# ruff: noqa: E402
+
 import faulthandler
 import logging
 from logging.handlers import RotatingFileHandler
