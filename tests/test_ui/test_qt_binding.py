@@ -56,6 +56,16 @@ def test_runtime_shell_has_no_legacy_window_references() -> None:
     assert offenders == []
 
 
+def test_x11_diagnostic_rollback_is_removed() -> None:
+    root = Path(__file__).resolve().parents[2]
+    assert not (root / "ui" / "native" / "x11_input_shape.py").exists()
+    overlay_source = (root / "ui" / "quick" / "overlay_surface.py").read_text(
+        encoding="utf-8"
+    )
+    assert "set_x11_click_through" not in overlay_source
+    assert "ui.native.x11_input_shape" not in overlay_source
+
+
 def test_production_runtime_does_not_load_qss() -> None:
     root = Path(__file__).resolve().parents[2]
     main_source = (root / "main.py").read_text(encoding="utf-8")
