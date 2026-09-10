@@ -1,73 +1,79 @@
 # MagicScribe
 
-MagicScribe is a lightweight, local-first screen annotation tool for KDE Plasma/Linux, inspired by Epic Pen. It lets you draw directly over any application with pen, smooth-stroke, line, rectangle, circle and eraser tools, with undo/redo, annotation visibility, clear-screen actions and keyboard shortcuts. The desktop UI is built with PySide6 and Qt Quick/QML; no web stack or remote service is required.
+MagicScribe is a lightweight, local-first screen annotation tool for KDE Plasma on native Wayland. It provides pen, smooth-stroke, line, rectangle, circle and eraser tools, plus undo/redo, visibility, clear-screen actions and keyboard shortcuts. The application is entirely local: Python/PySide6 owns state and native integration, while Qt Quick/QML owns presentation and interaction.
 
-## Runtime architecture
+## Supported platform
 
-Production uses `Python 3.12+ -> PySide6 / Qt 6.11+ -> QApplication + QQmlApplicationEngine -> Qt Quick/QML`.
+MagicScribe 2.x has one production platform contract: **KDE Plasma on native Wayland**. Production uses KDE `layer-shell-qt`; X11/XWayland is not a supported fallback. Portable/offscreen Qt top-level components remain only so CI can exercise QML and rendering logic without a compositor.
 
-Python owns canonical state, persistence, drawing history, desktop integration and native services. QML owns presentation, animation and temporary interaction state. The overlay uses `QQuickWindow` plus Python `QQuickPaintedItem` canvases, reusing the QPainter renderer.
+Python 3.12, 3.13 and 3.14 are covered by CI. Qt/PySide6 6.11+ is required. Because KDE `layer-shell-qt` uses private QtWayland APIs, `install.sh` requires the PySide6 Qt version to match the system Qt version reported by `qtpaths6`.
 
-The QML boundary is intentionally small: `DrawingAdapter`, `ToolAdapter`, `ShellAdapter` and `ToolListModel`.
+## Architecture
 
-Global drawing shortcuts use the XDG Desktop Portal. The portal transport is isolated in `ui/native/global_shortcuts.py` and uses Jeepney in a dedicated Python worker thread. Blocking D-Bus I/O therefore stays off the GUI thread; the rest of the application only sees the focused `GlobalShortcutService` API.
+The dependency direction is intentionally narrow:
 
-## Development checks
+```text
+QML -> adapters -> AppController -> domain services -> Settings
+                         |
+                         +-> immutable AppState
+```
+
+`AppController` is the only mutable application boundary exposed to UI/native services. It owns drawing/visibility state, stroke history and tool workflows and publishes explicit lifecycle-safe callbacks to the Qt adapters. The core does not import Qt.
+
+Tool metadata and defaults have one canonical declaration in `core.models.TOOL_SPECS`. Settings schema, tool configuration and the QML tool model are derived from those specifications. `Settings` is the sole persisted source of truth for tool selection/configuration; `ToolManager` derives live values instead of caching a second copy.
+
+`WindowCoordinator` is the sole owner of control/floating `QWindow` objects, input masks and 1:1 minimize/restore geometry. `ShellAdapter` only exposes that public behavior to QML and never reaches into coordinator internals.
+
+The Wayland overlay creates one Top-layer surface per `QScreen`. All canvases write strokes into one canonical global-desktop coordinate space, so history operations remain single-owner across monitors. Control and floating surfaces use the Overlay layer. Their layer-surfaces stay stationary; only `toolbarHost` / `paletteHost` move, while `QWindow.setMask()` restricts pointer input to the visible host.
+
+Click-through uses `WindowTransparentForInput`; runtime changes call `requestUpdate()` so the Wayland input region is committed immediately. Global drawing shortcuts use XDG Desktop Portal through Jeepney on a dedicated worker thread, keeping blocking D-Bus operations off the GUI thread.
+
+The Smooth tool spatially resamples dense pointer input before causal filtering and cubic approximation. This makes smoothing depend on physical path distance rather than mouse event frequency and keeps already-consolidated geometry append-stable.
+
+## Dependencies and development
+
+Dependency metadata is intentionally consolidated in one `pyproject.toml` using standard dependency groups:
+
+- `runtime`: exact audited runtime dependencies;
+- `dev`: runtime plus exact CI/development dependencies.
+
+The installer and CI consume those groups directly. CI additionally pins GitHub Actions to commit SHAs, pins pip, runs Ruff, tests Python 3.12–3.14, compiles all Python sources, lints portable QML, executes pytest and records a quick renderer benchmark.
+
+Typical local checks are:
 
 ```bash
-python scripts/verify_release_constraints.py
+python -m pip install --group ./pyproject.toml:dev
+python -m ruff check config core ui scripts main.py
 python -m compileall -q config core ui scripts main.py
 python -m pytest -q
 python scripts/benchmark_renderer.py --quick
 bash -n install.sh scripts/local_desktop_gate.sh
 ```
 
-Portable QML is linted in CI. `install.sh` additionally lints the Wayland-specific QML against the actual system `org.kde.layershell` module, because that module is supplied by KDE rather than the PySide6 wheel.
+The renderer benchmark is observational rather than a hard CI performance threshold; optimizations should be introduced only when measurements justify their complexity.
 
-## Reproducible dependency policy
+## Installation
 
-`requirements.txt` and `requirements-dev.txt` are compatibility contracts: they state the dependency ranges the code is expected to support.
+MagicScribe is intentionally a **repo-based desktop application**, not a wheel/PyPI package. From a checkout on the target KDE/Wayland system:
 
-`constraints-release.txt` selects the exact audited runtime versions used by `install.sh`. `constraints-ci.txt` extends that set with exact development/test versions used by CI. `scripts/verify_release_constraints.py` requires every direct runtime and CI dependency to have exactly one corresponding pin, and rejects stale or missing pins.
+```bash
+bash install.sh
+```
 
-Updating Qt on the native Wayland path requires extra care: KDE `layer-shell-qt` uses QtWayland private APIs. `install.sh` therefore requires the PySide6 Qt runtime and the system Qt reported by `qtpaths6` to have the same version before enabling the layer-shell QML module.
+The installer creates `.venv`, installs the pinned `runtime` dependency group, verifies Qt/Wayland/layer-shell compatibility, lints the complete QML module, installs application icons and creates the XDG `.desktop` entry.
 
-## Native Wayland architecture
+The desktop entry points to the current checkout. Moving or deleting the repository therefore invalidates that launcher; after moving the checkout, run `bash install.sh` again. This is an explicit deployment model rather than an accidental packaging contract.
 
-On a Wayland session MagicScribe uses Qt's native `wayland` QPA. The temporary `xcb`/XWayland diagnostic rollback used during migration has been retired after the physical KDE/KWin parity gate passed.
+## Permanent desktop regression gate
 
-The first native prototype used ordinary XDG Shell top-level windows. Real testing on the target KDE/KWin desktop rejected that design: the fullscreen transparent drawing window appeared in the task switcher, could retain desktop interaction/focus after drawing was disabled, the toolbar was not reliably above ordinary windows, and the shell could not provide the positioning/drag semantics MagicScribe needs.
-
-The production design therefore uses KDE `layer-shell-qt`, which exposes the Wayland layer-shell protocol to Qt/QML. One drawing layer-surface is created per `QScreen` on the **Top** layer. The control panel and floating palette use the **Overlay** layer, so they remain above the drawing surface. The drawing surface has no keyboard interactivity; the control panel requests keyboard interaction only on demand, while the floating palette requests none.
-
-Every `DrawingCanvas` maps local pointer coordinates into one canonical global desktop coordinate space before committing strokes and translates that history back into screen-local painter coordinates when rendering. Undo/redo/clear/visibility therefore remain single-owner operations in Python regardless of which monitor received the gesture.
-
-The control panel and floating palette each use a stationary fullscreen layer-surface with a small movable internal host (`toolbarHost` / `paletteHost`). `QWindow.setMask()` restricts input to the visible host, so the rest of each fullscreen control surface is click-through. Dragging moves only the internal host and never rewrites layer-shell margins during the pointer gesture.
-
-Minimize/restore is positionally 1:1: the floating icon appears with its center exactly on the toolbar logo, and restoring after moving the floating icon repositions the toolbar so its logo reappears exactly under that icon.
-
-Native click-through uses Qt's `WindowTransparentForInput`, which maps to the Wayland surface input region. Runtime changes call `requestUpdate()` so the new region is committed immediately and desktop interaction is restored without a focus change.
-
-## Local desktop parity harness
-
-Run the acceptance harness from the target CachyOS/KDE Plasma Wayland session:
+CI cannot validate compositor-specific behavior. Run the permanent acceptance harness on the target KDE Plasma Wayland desktop after changes involving windows, QML shell behavior, input, shortcuts, drawing, dependencies or lifecycle:
 
 ```bash
 bash scripts/local_desktop_gate.sh
 ```
 
-The harness runs `install.sh` first, so it verifies the system `layer-shell-qt` QML module and Qt ABI before starting the application. It then verifies the effective Wayland QPA, layer-shell runtime activation, one drawing surface per `QScreen`, the final XDG GlobalShortcuts registration result, Linux PSS from `/proc/<pid>/smaps_rollup`, and guides the physical checks for stacking, Alt+Tab exclusion, toolbar/floating dragging, 1:1 minimize/restore, click-through/input capture, drawing parity, multi-monitor behavior and lifecycle.
-
-A real manual `SKIP` leaves the gate incomplete. Conditions that genuinely do not apply to the machine, such as multi-monitor checks on a single-monitor desktop, are recorded as `N/A`. The final target-desktop validation completed with no `FAIL` or `SKIP`.
-
-## Platform policy
-
-The production shell and overlay are Qt Quick only; the historical QWidget shell/overlay and its QSS theme have been removed.
-
-Native Wayland plus KDE layer-shell is the supported production architecture for Plasma. The former X11 input-shape compatibility module and explicit XWayland rollback are no longer part of the codebase. The ordinary Qt top-level path remains only to support portable/offscreen CI tests.
+The gate verifies native Wayland selection, KDE layer-shell activation, one overlay surface per `QScreen`, Portal registration/fallback, stacking, Alt+Tab exclusion, toolbar/floating drag, exact 1:1 minimize/restore, immediate click-through, all drawing tools, undo/redo/clear/visibility, memory evidence and graceful shutdown. Multi-monitor checks become `N/A` only when the machine genuinely has one `QScreen`; any real `SKIP` leaves the gate incomplete.
 
 ## Visual system
 
-Production QML uses the dark-neumorphic tokens centralized in `ui/qml/MagicScribe/Theme.qml`: surface `#141414`, accent `#ff6600`, Noto Sans, radii `28 / 22 / 16 / 12`.
-
-The primary control shell is a compact frameless vertical toolbar. Clicking the MagicScribe icon reduces it to the small draggable `FloatingPalette`; clicking that palette restores the toolbar with 1:1 positional correspondence. Tool state, drawing state and configuration remain owned by Python and are only presented through the existing QML adapters.
+The production UI is Qt Quick only. Visual tokens live in `ui/qml/MagicScribe/Theme.qml`: dark surface `#141414`, accent `#ff6600`, Noto Sans and centralized radii/animation timings. Historical QWidget/QSS UI and migration-only compatibility paths are not part of the runtime.
