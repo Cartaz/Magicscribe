@@ -1,8 +1,4 @@
-"""Modelli dati centrali di MagicScribe.
-
-Definisce le strutture dati utilizzate in tutta l'applicazione: punti, tratti,
-configurazioni strumento e stato operativo minimo.
-"""
+"""Modelli e specifiche di dominio centrali di MagicScribe."""
 
 from __future__ import annotations
 
@@ -12,7 +8,6 @@ from typing import Optional
 
 
 class ToolType(Enum):
-    """Tipi di strumenti di disegno disponibili."""
     PEN = auto()
     ERASER = auto()
     LINE = auto()
@@ -22,60 +17,88 @@ class ToolType(Enum):
 
 
 class DrawingState(Enum):
-    """Stato operativo del motore di disegno."""
     INACTIVE = auto()
     ACTIVE = auto()
 
 
+@dataclass(frozen=True, slots=True)
+class ToolSpec:
+    """Metadata stabile e default di uno strumento.
+
+    Le differenze di rendering restano nel renderer; qui vivono soltanto i dati
+    che altrimenti verrebbero duplicati fra settings, manager e modello QML.
+    """
+
+    tool_type: ToolType
+    label: str
+    default_size: int
+    default_color: str | None
+
+    @property
+    def key(self) -> str:
+        return self.tool_type.name.lower()
+
+    @property
+    def supports_color(self) -> bool:
+        return self.default_color is not None
+
+    @property
+    def size_key(self) -> str:
+        return "eraser_size" if self.tool_type is ToolType.ERASER else f"{self.key}_size"
+
+    @property
+    def color_key(self) -> str | None:
+        return f"{self.key}_color" if self.supports_color else None
+
+
+TOOL_SPECS: tuple[ToolSpec, ...] = (
+    ToolSpec(ToolType.PEN, "Penna", 5, "#ff0000"),
+    ToolSpec(ToolType.ERASER, "Gomma", 40, None),
+    ToolSpec(ToolType.LINE, "Linea", 3, "#27ae60"),
+    ToolSpec(ToolType.RECT, "Rett.", 3, "#ff0000"),
+    ToolSpec(ToolType.CIRCLE, "Cerchio", 3, "#ff8800"),
+    ToolSpec(ToolType.SMOOTH, "Smuss.", 5, "#ff0000"),
+)
+TOOL_SPEC_BY_TYPE = {spec.tool_type: spec for spec in TOOL_SPECS}
+
+
 @dataclass(frozen=True)
 class Point:
-    """Punto nello spazio dello schermo."""
     x: float
     y: float
 
 
 @dataclass
 class Stroke:
-    """Tratto di disegno completato o in corso.
+    """Tratto completato o in corso; contiene solo dati consumati dal runtime."""
 
-    Contiene soltanto stato attualmente configurabile e consumato dal runtime.
-    Eventuali future capacità (pressione, riempimenti, frecce, ecc.) vanno
-    introdotte con una feature completa, non come campi dormienti nel modello.
-    """
     tool_type: ToolType
     points: list[Point] = field(default_factory=list)
     color: str = "#ff0000"
     size: float = 5.0
 
     def is_shape(self) -> bool:
-        """Restituisce True se il tratto e' una forma geometrica."""
         return self.tool_type in (ToolType.LINE, ToolType.RECT, ToolType.CIRCLE)
 
     @property
     def start_point(self) -> Optional[Point]:
-        """Il primo punto del tratto (per le forme geometriche)."""
         return self.points[0] if self.points else None
 
     @property
     def end_point(self) -> Optional[Point]:
-        """L'ultimo punto del tratto (per le forme geometriche)."""
         return self.points[-1] if self.points else None
 
 
 @dataclass(frozen=True)
 class ToolConfig:
-    """Configurazione realmente supportata da uno strumento di disegno."""
     tool_type: ToolType
     color: str = "#ff0000"
     size: float = 5.0
 
 
-@dataclass
+@dataclass(frozen=True)
 class AppState:
-    """Stato globale dell'applicazione non posseduto da servizi dedicati.
+    """Snapshot immutabile dello stato globale non posseduto da altri servizi."""
 
-    Lo strumento corrente appartiene esclusivamente a ToolManager; non viene
-    duplicato qui, così ogni stato mutabile importante ha un solo proprietario.
-    """
     drawing_state: DrawingState = DrawingState.INACTIVE
     annotations_visible: bool = True
