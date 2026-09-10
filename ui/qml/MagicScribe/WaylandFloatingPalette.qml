@@ -5,72 +5,19 @@ FloatingPalette {
     id: root
 
     layerShellPlacement: true
+    layerShellFullscreen: true
     flags: Qt.FramelessWindowHint
 
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop
+                               | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft
+                               | LayerShell.Window.AnchorRight
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
     LayerShell.Window.scope: "magicscribe-floating"
-    LayerShell.Window.margins.left: Math.round(root.layerShellMarginLeft)
-    LayerShell.Window.margins.top: Math.round(root.layerShellMarginTop)
+    LayerShell.Window.margins.left: 0
+    LayerShell.Window.margins.top: 0
     LayerShell.Window.margins.right: 0
     LayerShell.Window.margins.bottom: 0
-
-    function setWaylandDragMargins(left, top) {
-        const maxLeft = Math.max(0, Screen.width - root.width)
-        const maxTop = Math.max(0, Screen.height - root.height)
-        root.layerShellMarginLeft = Math.max(0, Math.min(maxLeft, left))
-        root.layerShellMarginTop = Math.max(0, Math.min(maxTop, top))
-    }
-
-    MouseArea {
-        id: waylandFloatingMouse
-        anchors.fill: parent
-        z: 1000
-        acceptedButtons: Qt.LeftButton
-        preventStealing: true
-        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-
-        property real pressMarginLeft: 0
-        property real pressMarginTop: 0
-        property real pressDesktopX: 0
-        property real pressDesktopY: 0
-        property bool moved: false
-
-        onPressed: (mouse) => {
-            pressMarginLeft = root.layerShellMarginLeft
-            pressMarginTop = root.layerShellMarginTop
-            pressDesktopX = root.layerShellMarginLeft + mouse.x
-            pressDesktopY = root.layerShellMarginTop + mouse.y
-            moved = false
-        }
-
-        onPositionChanged: (mouse) => {
-            if (!pressed)
-                return
-
-            const currentDesktopX = root.layerShellMarginLeft + mouse.x
-            const currentDesktopY = root.layerShellMarginTop + mouse.y
-            const dx = currentDesktopX - pressDesktopX
-            const dy = currentDesktopY - pressDesktopY
-
-            if (!moved && Math.abs(dx) < 4 && Math.abs(dy) < 4)
-                return
-
-            moved = true
-            root.setWaylandDragMargins(pressMarginLeft + dx,
-                                       pressMarginTop + dy)
-        }
-
-        onReleased: {
-            const wasMoved = moved
-            moved = false
-            if (!wasMoved)
-                root.shellAdapter.restore_control_panel()
-        }
-
-        onCanceled: moved = false
-    }
 }
