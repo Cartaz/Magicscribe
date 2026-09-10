@@ -1,33 +1,29 @@
-"""Moduli core di MagicScribe.
-
-Espone i componenti principali della logica di business.
-Il livello core NON importa mai moduli Qt (§5.1.4b).
-"""
+"""Framework-agnostic application core for MagicScribe."""
 
 from core.app_controller import AppController
-from core.models import ToolType, DrawingState, AppState, Stroke, Point, ToolConfig
+from core.models import (
+    AppState,
+    DrawingState,
+    Point,
+    Stroke,
+    TOOL_SPECS,
+    ToolConfig,
+    ToolSpec,
+    ToolType,
+)
 from core.stroke_manager import StrokeManager
 from core.tool_manager import ToolManager
-from core.event_bus import EventBus, event_bus
-from core.exceptions import (
-    MagicScribeError, ConfigError, DrawingError, StrokeError, ToolError,
-)
 
 __all__ = [
     "AppController",
-    "ToolType",
-    "DrawingState",
     "AppState",
-    "Stroke",
+    "DrawingState",
     "Point",
+    "Stroke",
+    "TOOL_SPECS",
     "ToolConfig",
+    "ToolSpec",
+    "ToolType",
     "StrokeManager",
     "ToolManager",
-    "EventBus",
-    "event_bus",
-    "MagicScribeError",
-    "ConfigError",
-    "DrawingError",
-    "StrokeError",
-    "ToolError",
 ]
