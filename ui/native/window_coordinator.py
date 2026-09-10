@@ -1,14 +1,23 @@
-"""Coordinamento delle finestre native/Qt di MagicScribe."""
+"""Coordinamento delle finestre shell Qt di MagicScribe."""
 
 from __future__ import annotations
 
 import logging
 
 from PySide6.QtCore import QPoint, QRect, QSize
-from PySide6.QtGui import QScreen, QWindow
+from PySide6.QtGui import QGuiApplication, QScreen, QWindow
 from PySide6.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
+
+
+def _platform_name() -> str:
+    return QGuiApplication.platformName().lower()
+
+
+def _supports_absolute_top_level_positioning() -> bool:
+    """XDG Shell non espone il posizionamento assoluto delle top-level."""
+    return not _platform_name().startswith("wayland")
 
 
 def _clamp_position_to_geometry(
@@ -37,32 +46,46 @@ def _clamp_position_to_geometry(
 
 
 class WindowCoordinator:
-    """Possiede la policy di visibilita', posizione e z-order della shell Qt.
+    """Possiede visibilita' e lifecycle della shell QML.
 
-    Riceve solo finestre Qt; non conosce renderer, widget legacy o regole di
-    dominio. Pannello e floating palette restano presentazione QML. Le
-    posizioni vengono ricontrollate quando cambia la topologia dei monitor o
-    l'area disponibile del desktop.
+    Su X11/offscreen mantiene placement, reclamp, raise e activation espliciti.
+    Su Wayland nativo non emula quelle operazioni: layer-shell possiede stacking,
+    anchors, margins e keyboard interactivity; il QML aggiorna direttamente i
+    margini durante il drag.
     """
 
     _CONTROL_MARGIN = 20
     _FLOATING_MARGIN = 20
 
-    def __init__(self, overlay_window: QWindow) -> None:
-        self._overlay_window = overlay_window
+    def __init__(self) -> None:
         self._control_window: QWindow | None = None
         self._floating_window: QWindow | None = None
         self._last_control_pos: QPoint | None = None
         self._last_floating_pos: QPoint | None = None
         self._screen_signals_connected = False
         self._bound_screens: list[QScreen] = []
-        self._bind_screen_signals()
+        self._absolute_positioning = _supports_absolute_top_level_positioning()
+
+        if self._absolute_positioning:
+            self._bind_screen_signals()
+        else:
+            logger.info(
+                "Wayland nativo: placement e stacking shell delegati a layer-shell"
+            )
 
     def set_control_window(self, window: QWindow) -> None:
         self._control_window = window
+        if not self._absolute_positioning:
+            primary = QApplication.primaryScreen()
+            if primary is not None:
+                window.setScreen(primary)
 
     def set_floating_window(self, window: QWindow) -> None:
         self._floating_window = window
+        if not self._absolute_positioning:
+            primary = QApplication.primaryScreen()
+            if primary is not None:
+                window.setScreen(primary)
 
     def show_control_panel(self) -> None:
         window = self._control_window
@@ -72,21 +95,25 @@ class WindowCoordinator:
 
         floating = self._floating_window
         if floating is not None and floating.isVisible():
-            self._last_floating_pos = self._clamp_position(
-                floating,
-                floating.position(),
-            )
+            if self._absolute_positioning:
+                self._last_floating_pos = self._clamp_position(
+                    floating,
+                    floating.position(),
+                )
             floating.hide()
 
-        target_pos = self._last_control_pos
-        if target_pos is None:
-            target_pos = self._default_control_position(window)
-        target_pos = self._clamp_position(window, target_pos)
-        self._last_control_pos = target_pos
-        window.setPosition(target_pos)
+        if self._absolute_positioning:
+            target_pos = self._last_control_pos
+            if target_pos is None:
+                target_pos = self._default_control_position(window)
+            target_pos = self._clamp_position(window, target_pos)
+            self._last_control_pos = target_pos
+            window.setPosition(target_pos)
+
         window.show()
-        window.raise_()
-        window.requestActivate()
+        if self._absolute_positioning:
+            window.raise_()
+            window.requestActivate()
 
     def minimize_to_floating(self) -> None:
         control = self._control_window
@@ -95,20 +122,24 @@ class WindowCoordinator:
             logger.warning("Shell QML incompleta: impossibile ridurre a floating palette")
             return
 
-        self._last_control_pos = self._clamp_position(
-            control,
-            control.position(),
-        )
+        if self._absolute_positioning:
+            self._last_control_pos = self._clamp_position(
+                control,
+                control.position(),
+            )
         control.hide()
 
-        target_pos = self._last_floating_pos
-        if target_pos is None:
-            target_pos = self._default_floating_position(floating)
-        target_pos = self._clamp_position(floating, target_pos)
-        self._last_floating_pos = target_pos
-        floating.setPosition(target_pos)
+        if self._absolute_positioning:
+            target_pos = self._last_floating_pos
+            if target_pos is None:
+                target_pos = self._default_floating_position(floating)
+            target_pos = self._clamp_position(floating, target_pos)
+            self._last_floating_pos = target_pos
+            floating.setPosition(target_pos)
+
         floating.show()
-        floating.raise_()
+        if self._absolute_positioning:
+            floating.raise_()
         logger.info("Pannello QML ridotto a floating palette")
 
     def restore_control_panel(self) -> None:
@@ -120,7 +151,10 @@ class WindowCoordinator:
         return floating is not None and floating.isVisible()
 
     def ensure_z_order(self) -> None:
-        self._overlay_window.lower()
+        if not self._absolute_positioning:
+            # Le layer-surface hanno un ordine definito dal protocollo, non da
+            # raise_/activation delle normali finestre Qt.
+            return
 
         control = self._control_window
         if control is not None and control.isVisible():
@@ -142,13 +176,13 @@ class WindowCoordinator:
         if control is not None:
             control.hide()
 
-        self._overlay_window.hide()
-
     def quit_application(self) -> None:
         self.shutdown()
         QApplication.quit()
 
     def _bind_screen_signals(self) -> None:
+        if not self._absolute_positioning:
+            return
         app = QApplication.instance()
         if app is not None and not self._screen_signals_connected:
             app.screenAdded.connect(self._on_screen_topology_changed)
@@ -158,6 +192,8 @@ class WindowCoordinator:
         self._rebind_screen_geometry_signals()
 
     def _rebind_screen_geometry_signals(self) -> None:
+        if not self._absolute_positioning:
+            return
         self._disconnect_screen_geometry_signals()
         self._bound_screens = list(QApplication.screens())
         for screen in self._bound_screens:
@@ -198,6 +234,9 @@ class WindowCoordinator:
         self._reclamp_shell_windows()
 
     def _reclamp_shell_windows(self) -> None:
+        if not self._absolute_positioning:
+            return
+
         control = self._control_window
         if control is not None:
             if self._last_control_pos is not None:
@@ -241,7 +280,7 @@ class WindowCoordinator:
         )
 
     def _default_control_position(self, window: QWindow) -> QPoint:
-        """Posiziona la toolbar sul lato sinistro senza codificare un monitor."""
+        """Posiziona la toolbar sul lato sinistro su backend che lo consentono."""
         screen = window.screen() or QApplication.primaryScreen()
         if screen is None:
             return QPoint(100, 100)

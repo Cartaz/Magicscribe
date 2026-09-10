@@ -15,14 +15,16 @@ import os
 from pathlib import Path
 import sys
 
-# Manteniamo temporaneamente XWayland finche' la parita' desktop/Wayland non
-# viene verificata separatamente. Deve precedere qualsiasi import PySide6.
-_is_wayland = (
+# Su una sessione Wayland la produzione usa il QPA nativo. Il precedente
+# override xcb/XWayland era soltanto un rollback diagnostico della migrazione ed
+# e' stato ritirato dopo il completamento del gate KDE/KWin.
+_is_wayland_session = (
     os.environ.get("XDG_SESSION_TYPE") == "wayland"
     or bool(os.environ.get("WAYLAND_DISPLAY"))
 )
-if _is_wayland and not os.environ.get("QT_QPA_PLATFORM"):
-    os.environ["QT_QPA_PLATFORM"] = "xcb"
+_requested_qpa = os.environ.get("QT_QPA_PLATFORM", "").lower()
+if _is_wayland_session and _requested_qpa in {"", "xcb"}:
+    os.environ["QT_QPA_PLATFORM"] = "wayland"
 
 from PySide6.QtCore import QTimer, QSize
 from PySide6.QtGui import QIcon, QWindow
@@ -39,6 +41,7 @@ from ui.adapters.shell_adapter import ShellAdapter
 from ui.adapters.tool_adapter import ToolAdapter
 from ui.models.tool_list_model import ToolListModel
 from ui.native.global_shortcuts import GlobalShortcutService
+from ui.native.layer_shell import configure_layer_shell
 from ui.native.single_instance import SingleInstanceGuard
 from ui.native.window_coordinator import WindowCoordinator
 from ui.quick.overlay_surface import OverlaySurface
@@ -95,12 +98,14 @@ def _set_application_icon(app: QApplication, app_dir: Path) -> None:
         app.setWindowIcon(QIcon(str(svg_path)))
 
 
-def _portal_parent_window(window: QWindow) -> str:
-    """Restituisce il parent_window XDG per il backend Qt attuale."""
-    if QApplication.platformName().lower() != "xcb":
-        return ""
-    xid = int(window.winId())
-    return f"x11:{xid:x}" if xid else ""
+def _portal_parent_window(_window: QWindow) -> str:
+    """Restituisce il parent XDG per GlobalShortcuts.
+
+    Sul percorso Wayland nativo non esportiamo ancora un handle xdg-foreign;
+    XDG Desktop Portal accetta esplicitamente una stringa vuota. Il parent
+    influenza il dialog, non la semantica delle GlobalShortcuts.
+    """
+    return ""
 
 
 def _create_floating_palette(
@@ -108,14 +113,16 @@ def _create_floating_palette(
     drawing_adapter: DrawingAdapter,
     shell_adapter: ShellAdapter,
     logger: logging.Logger,
+    *,
+    component_name: str,
 ) -> tuple[QQmlComponent, QWindow]:
     """Istanzia la seconda top-level window QML con dipendenze esplicite."""
     component = QQmlComponent(engine)
-    component.loadFromModule("MagicScribe", "FloatingPalette")
+    component.loadFromModule("MagicScribe", component_name)
 
     if not component.isReady():
         for error in component.errors():
-            logger.critical("Errore QML FloatingPalette: %s", error.toString())
+            logger.critical("Errore QML %s: %s", component_name, error.toString())
         raise SystemExit(1)
 
     obj = component.createWithInitialProperties({
@@ -124,7 +131,7 @@ def _create_floating_palette(
     })
     if not isinstance(obj, QWindow):
         for error in component.errors():
-            logger.critical("Errore creazione FloatingPalette: %s", error.toString())
+            logger.critical("Errore creazione %s: %s", component_name, error.toString())
         if obj is not None:
             obj.deleteLater()
         raise SystemExit(1)
@@ -138,11 +145,6 @@ def main() -> None:
     _setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Avvio %s v%s", AppMeta.NAME, AppMeta.VERSION)
-    logger.info(
-        "Piattaforma Qt: %s (sessione: %s)",
-        os.environ.get("QT_QPA_PLATFORM", "auto"),
-        os.environ.get("XDG_SESSION_TYPE", "sconosciuto"),
-    )
 
     instance_guard = SingleInstanceGuard()
     if not instance_guard.acquire():
@@ -160,6 +162,22 @@ def main() -> None:
         app.setDesktopFileName(AppMeta.ORG_NAME)
         app.setQuitOnLastWindowClosed(True)
 
+        platform_name = QApplication.platformName().lower()
+        native_wayland = platform_name.startswith("wayland")
+        logger.info(
+            "Piattaforma Qt effettiva: %s (sessione: %s, override: %s)",
+            platform_name,
+            os.environ.get("XDG_SESSION_TYPE", "sconosciuto"),
+            os.environ.get("QT_QPA_PLATFORM", "auto"),
+        )
+        if _is_wayland_session and native_wayland:
+            logger.info("Backend Wayland nativo attivo")
+        elif _is_wayland_session:
+            logger.warning(
+                "Sessione Wayland con backend Qt non nativo: %s",
+                platform_name,
+            )
+
         app_dir = Path(__file__).resolve().parent
         _set_application_icon(app, app_dir)
 
@@ -175,36 +193,61 @@ def main() -> None:
         drawing_adapter = DrawingAdapter(controller)
         tool_adapter = ToolAdapter(controller)
         tool_model = ToolListModel()
+        window_coordinator = WindowCoordinator()
+        global_shortcuts = GlobalShortcutService(controller)
+        shell_adapter = ShellAdapter(window_coordinator, global_shortcuts)
 
         # Deve precedere la creazione di qualsiasi QQuickWindow traslucida.
         QQuickWindow.setDefaultAlphaBuffer(True)
 
-        overlay_surface = OverlaySurface(drawing_adapter, tool_adapter)
+        engine = QQmlApplicationEngine()
+        qml_import_root = app_dir / "ui" / "qml"
+        engine.addImportPath(str(qml_import_root))
+        if native_wayland:
+            try:
+                configure_layer_shell(engine)
+            except RuntimeError as exc:
+                logger.critical("Wayland layer-shell non disponibile: %s", exc)
+                raise SystemExit(1) from exc
+
+        engine.setInitialProperties({
+            "drawingAdapter": drawing_adapter,
+            "toolAdapter": tool_adapter,
+            "shellAdapter": shell_adapter,
+            "toolModel": tool_model,
+        })
+
+        overlay_surface = OverlaySurface(
+            drawing_adapter,
+            tool_adapter,
+            qml_engine=engine if native_wayland else None,
+        )
         overlay_surface.show()
-        window_coordinator = WindowCoordinator(overlay_surface.window)
-        global_shortcuts = GlobalShortcutService(controller)
-        shell_adapter = ShellAdapter(window_coordinator, global_shortcuts)
+
+        def ensure_window_order() -> None:
+            overlay_surface.ensure_z_order()
+            window_coordinator.ensure_z_order()
 
         drawing_adapter.activeChanged.connect(
-            lambda: QTimer.singleShot(50, window_coordinator.ensure_z_order)
+            lambda: QTimer.singleShot(50, ensure_window_order)
         )
 
         exit_code = 1
         try:
-            engine = QQmlApplicationEngine()
-            qml_import_root = app_dir / "ui" / "qml"
-            engine.addImportPath(str(qml_import_root))
-            engine.setInitialProperties({
-                "drawingAdapter": drawing_adapter,
-                "toolAdapter": tool_adapter,
-                "shellAdapter": shell_adapter,
-                "toolModel": tool_model,
-            })
-            engine.loadFromModule("MagicScribe", "ControlPanel")
+            control_component = (
+                "WaylandControlPanel" if native_wayland else "ControlPanel"
+            )
+            floating_component_name = (
+                "WaylandFloatingPalette" if native_wayland else "FloatingPalette"
+            )
+            engine.loadFromModule("MagicScribe", control_component)
 
             roots = engine.rootObjects()
             if not roots or not isinstance(roots[0], QWindow):
-                logger.critical("Impossibile creare il pannello QML MagicScribe")
+                logger.critical(
+                    "Impossibile creare il pannello QML %s",
+                    control_component,
+                )
                 raise SystemExit(1)
 
             control_window = roots[0]
@@ -213,17 +256,18 @@ def main() -> None:
                 drawing_adapter,
                 shell_adapter,
                 logger,
+                component_name=floating_component_name,
             )
             window_coordinator.set_control_window(control_window)
             window_coordinator.set_floating_window(floating_window)
 
-            global_shortcuts.start(_portal_parent_window(control_window))
-            tray = TrayIcon(controller, window_coordinator.restore_control_panel)
-
             if settings.get("show_control_on_start"):
                 window_coordinator.show_control_panel()
 
-            QTimer.singleShot(200, window_coordinator.ensure_z_order)
+            global_shortcuts.start(_portal_parent_window(control_window))
+            tray = TrayIcon(controller, window_coordinator.restore_control_panel)
+
+            QTimer.singleShot(200, ensure_window_order)
 
             logger.info("Applicazione avviata con shell e overlay Qt Quick")
             exit_code = app.exec()

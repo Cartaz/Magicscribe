@@ -8,3 +8,6 @@ ShortcutBadge 1.0 ShortcutBadge.qml
 StatusIndicator 1.0 StatusIndicator.qml
 FloatingPalette 1.0 FloatingPalette.qml
 ControlPanel 1.0 ControlPanel.qml
+WaylandFloatingPalette 1.0 WaylandFloatingPalette.qml
+WaylandControlPanel 1.0 WaylandControlPanel.qml
+WaylandLayerSurface 1.0 WaylandLayerSurface.qml

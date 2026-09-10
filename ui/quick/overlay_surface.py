@@ -1,10 +1,11 @@
-"""Top-level Qt Quick surface per l'overlay di disegno."""
+"""Top-level Qt Quick surfaces per l'overlay di disegno."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -15,11 +16,11 @@ from PySide6.QtGui import (
     QPixmap,
     QScreen,
 )
+from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickWindow
 
 from ui.adapters.drawing_adapter import DrawingAdapter
 from ui.adapters.tool_adapter import ToolAdapter
-from ui.native.x11_input_shape import set_x11_click_through
 from ui.quick.drawing_canvas import DrawingCanvas
 
 logger = logging.getLogger(__name__)
@@ -44,67 +45,221 @@ def _platform_name() -> str:
     return QGuiApplication.platformName().lower()
 
 
-class OverlaySurface:
-    """Possiede QQuickWindow, canvas e policy native del solo overlay.
+def _is_native_wayland() -> bool:
+    return _platform_name().startswith("wayland")
 
-    Non possiede stato di dominio: deriva interattivita' e cursore dagli
-    adapter, mentre il canvas inoltra le gesture al controller tramite il
-    DrawingAdapter. La geometria segue dinamicamente il desktop virtuale.
+
+@dataclass
+class _OverlayView:
+    screen: QScreen | None
+    window: QQuickWindow
+    canvas: DrawingCanvas
+
+
+class OverlaySurface:
+    """Possiede le finestre overlay e la loro policy di input/rendering.
+
+    Il percorso di produzione Wayland usa una layer-surface per ogni QScreen: il
+    compositor possiede stacking e geometria, mentre tutte le canvas leggono e
+    scrivono nello stesso spazio di coordinate globali. Il percorso Qt top-level
+    rimane soltanto per backend portabili/offscreen usati dai test.
     """
 
     def __init__(
         self,
         drawing_adapter: DrawingAdapter,
         tool_adapter: ToolAdapter,
+        *,
+        qml_engine: QQmlEngine | None = None,
     ) -> None:
         self._drawing_adapter = drawing_adapter
         self._tool_adapter = tool_adapter
+        self._qml_engine = qml_engine
+        self._wayland_component: QQmlComponent | None = None
         self._eraser_cursor = _create_eraser_cursor()
         self._screen_signals_connected = False
         self._bound_screens: list[QScreen] = []
+        self._views: list[_OverlayView] = []
+        self._shown = False
 
-        self.window = QQuickWindow()
-        self.window.setObjectName("overlayWindow")
-        self.window.setTitle("MagicScribe Overlay")
-        self.window.setColor(QColor(0, 0, 0, 0))
-        self.window.setFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
-            | Qt.WindowType.WindowDoesNotAcceptFocus
-        )
-
-        content = self.window.contentItem()
-        self.canvas = DrawingCanvas(drawing_adapter, content)
-        self.canvas.setObjectName("drawingCanvas")
-        content.widthChanged.connect(self._sync_canvas_size)
-        content.heightChanged.connect(self._sync_canvas_size)
+        if _is_native_wayland():
+            self._prepare_wayland_component()
 
         drawing_adapter.activeChanged.connect(self._sync_input_mode)
         tool_adapter.currentToolChanged.connect(self._sync_cursor)
 
         self._bind_screen_signals()
+        self._build_views()
         self.refresh_geometry()
-        self._sync_canvas_size()
         self._sync_cursor()
 
+    @property
+    def windows(self) -> tuple[QQuickWindow, ...]:
+        return tuple(view.window for view in self._views)
+
+    @property
+    def primary_window(self) -> QQuickWindow:
+        primary = QGuiApplication.primaryScreen()
+        for view in self._views:
+            if view.screen is primary:
+                return view.window
+        if not self._views:
+            raise RuntimeError("OverlaySurface senza finestre")
+        return self._views[0].window
+
+    @property
+    def window(self) -> QQuickWindow:
+        """Alias compatibile per il primary overlay window."""
+        return self.primary_window
+
+    @property
+    def canvas(self) -> DrawingCanvas:
+        primary = self.primary_window
+        for view in self._views:
+            if view.window is primary:
+                return view.canvas
+        raise RuntimeError("OverlaySurface senza canvas primaria")
+
     def show(self) -> None:
-        self.window.show()
-        # L'input region X11 richiede un native window id valido, quindi viene
-        # sincronizzata dopo show() e poi a ogni cambio dello stato drawing.
+        self._shown = True
+        for view in self._views:
+            view.window.show()
         self._sync_input_mode()
+        logger.info(
+            "Overlay avviato: backend=%s, ruolo=%s, superfici=%d",
+            _platform_name(),
+            "layer-shell/top" if _is_native_wayland() else "qt-toplevel",
+            len(self._views),
+        )
+
+    def ensure_z_order(self) -> None:
+        if _is_native_wayland():
+            # Lo stacking e' parte del ruolo layer-shell e non va combattuto
+            # con raise/lower delle normali top-level.
+            return
+        for view in self._views:
+            if view.window.isVisible():
+                view.window.lower()
 
     def shutdown(self) -> None:
+        self._shown = False
         self._unbind_screen_signals()
-        self.window.hide()
+        for view in self._views:
+            view.window.hide()
 
     def refresh_geometry(self) -> None:
-        """Copre il desktop virtuale usando le coordinate dello schermo primario."""
+        """Sincronizza porzione di desktop e origine globale di ogni canvas."""
+        if _is_native_wayland():
+            for view in self._views:
+                if view.screen is None:
+                    continue
+                geometry = view.screen.geometry()
+                view.canvas.set_global_origin(
+                    QPointF(geometry.x(), geometry.y())
+                )
+                self._sync_canvas_size(view)
+            return
+
+        if not self._views:
+            return
         screen = QGuiApplication.primaryScreen()
         if screen is None:
             logger.warning("Nessuno schermo primario disponibile per l'overlay Quick")
             return
-        self.window.setGeometry(screen.virtualGeometry())
+        geometry = screen.virtualGeometry()
+        view = self._views[0]
+        view.window.setGeometry(geometry)
+        view.canvas.set_global_origin(QPointF(geometry.x(), geometry.y()))
+        self._sync_canvas_size(view)
+
+    def _prepare_wayland_component(self) -> None:
+        engine = self._qml_engine
+        if engine is None:
+            raise RuntimeError(
+                "Overlay Wayland nativo richiede il QQmlEngine condiviso della shell"
+            )
+        component = QQmlComponent(engine)
+        component.loadFromModule("MagicScribe", "WaylandLayerSurface")
+        if not component.isReady():
+            errors = "; ".join(error.toString() for error in component.errors())
+            component.deleteLater()
+            raise RuntimeError(
+                "Impossibile caricare WaylandLayerSurface/layer-shell: " + errors
+            )
+        self._wayland_component = component
+
+    def _build_views(self) -> None:
+        screens = list(QGuiApplication.screens())
+        if _is_native_wayland() and screens:
+            for index, screen in enumerate(screens):
+                self._views.append(self._create_view(screen, index))
+        else:
+            self._views.append(self._create_view(None, 0))
+
+    def _create_window(self, index: int) -> QQuickWindow:
+        if _is_native_wayland():
+            component = self._wayland_component
+            if component is None:
+                raise RuntimeError("Componente layer-shell overlay non inizializzato")
+            obj = component.create()
+            if not isinstance(obj, QQuickWindow):
+                if obj is not None:
+                    obj.deleteLater()
+                errors = "; ".join(error.toString() for error in component.errors())
+                raise RuntimeError(
+                    "WaylandLayerSurface non ha creato un QQuickWindow: " + errors
+                )
+            window = obj
+        else:
+            window = QQuickWindow()
+            window.setColor(QColor(0, 0, 0, 0))
+            window.setFlags(
+                Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.WindowStaysOnTopHint
+                | Qt.WindowType.Tool
+                | Qt.WindowType.WindowDoesNotAcceptFocus
+            )
+
+        window.setObjectName("overlayWindow" if index == 0 else f"overlayWindow{index}")
+        window.setTitle("MagicScribe Overlay")
+        return window
+
+    def _create_view(self, screen: QScreen | None, index: int) -> _OverlayView:
+        window = self._create_window(index)
+        if screen is not None:
+            window.setScreen(screen)
+
+        if not self._drawing_adapter.active:
+            window.setFlag(Qt.WindowType.WindowTransparentForInput, True)
+
+        content = window.contentItem()
+        origin = QPointF()
+        if screen is not None:
+            geometry = screen.geometry()
+            origin = QPointF(geometry.x(), geometry.y())
+        canvas = DrawingCanvas(
+            self._drawing_adapter,
+            content,
+            global_origin=origin,
+        )
+        canvas.setObjectName("drawingCanvas" if index == 0 else f"drawingCanvas{index}")
+        view = _OverlayView(screen=screen, window=window, canvas=canvas)
+
+        content.widthChanged.connect(
+            lambda *_, current=view: self._sync_canvas_size(current)
+        )
+        content.heightChanged.connect(
+            lambda *_, current=view: self._sync_canvas_size(current)
+        )
+        self._sync_canvas_size(view)
+        return view
+
+    def _destroy_views(self) -> None:
+        for view in self._views:
+            view.window.hide()
+            view.canvas.deleteLater()
+            view.window.deleteLater()
+        self._views = []
 
     def _bind_screen_signals(self) -> None:
         app = QGuiApplication.instance()
@@ -150,51 +305,58 @@ class OverlaySurface:
 
     def _on_screen_topology_changed(self, *_args) -> None:
         self._rebind_screen_geometry_signals()
+        if _is_native_wayland():
+            was_shown = self._shown
+            self._destroy_views()
+            self._build_views()
+            self.refresh_geometry()
+            self._sync_cursor()
+            if was_shown:
+                self.show()
+            return
         self.refresh_geometry()
 
     def _on_screen_geometry_changed(self, *_args) -> None:
         self.refresh_geometry()
 
-    def _sync_canvas_size(self) -> None:
-        content = self.window.contentItem()
-        self.canvas.setWidth(content.width())
-        self.canvas.setHeight(content.height())
+    @staticmethod
+    def _sync_canvas_size(view: _OverlayView) -> None:
+        content = view.window.contentItem()
+        view.canvas.setWidth(content.width())
+        view.canvas.setHeight(content.height())
 
     def _sync_input_mode(self) -> None:
-        """Alterna click-through e cattura input senza ricreare la window xcb."""
+        """Alterna click-through e cattura input su tutte le superfici."""
         click_through = not self._drawing_adapter.active
-
-        # Sul runtime di migrazione reale (xcb/XWayland) cambiare
-        # WindowTransparentForInput a finestra Quick gia' visibile si e'
-        # dimostrato instabile. Usiamo quindi l'input shape X11, che modifica
-        # solo la regione di input del native window esistente.
-        if _platform_name() == "xcb":
-            if set_x11_click_through(int(self.window.winId()), click_through):
-                self._sync_cursor()
-                return
-            logger.warning(
-                "X11 input shape non disponibile; uso il fallback Qt per l'overlay"
-            )
-
-        self._set_qt_input_transparency(click_through)
+        for view in self._views:
+            self._set_qt_input_transparency(view.window, click_through)
         self._sync_cursor()
 
-    def _set_qt_input_transparency(self, click_through: bool) -> None:
-        """Fallback portabile per piattaforme diverse da xcb."""
-        was_visible = self.window.isVisible()
-        self.window.setFlag(
+    @staticmethod
+    def _set_qt_input_transparency(
+        window: QQuickWindow,
+        click_through: bool,
+    ) -> None:
+        """Aggiorna la wl_surface input region e ne forza il commit."""
+        was_visible = window.isVisible()
+        window.setFlag(
             Qt.WindowType.WindowTransparentForInput,
             click_through,
         )
-        if was_visible and not self.window.isVisible():
-            self.window.show()
+        if was_visible and not window.isVisible():
+            window.show()
+        if was_visible:
+            # QtWayland aggiorna wl_surface.set_input_region() in setWindowFlags,
+            # ma la richiesta diventa effettiva solo al successivo surface commit.
+            window.requestUpdate()
 
     def _sync_cursor(self) -> None:
         if not self._drawing_adapter.active:
-            self.window.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
-            return
-
-        if self._tool_adapter.currentTool == "eraser":
-            self.window.setCursor(self._eraser_cursor)
+            cursor = QCursor(Qt.CursorShape.ArrowCursor)
+        elif self._tool_adapter.currentTool == "eraser":
+            cursor = self._eraser_cursor
         else:
-            self.window.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+            cursor = QCursor(Qt.CursorShape.CrossCursor)
+
+        for view in self._views:
+            view.window.setCursor(cursor)

@@ -17,6 +17,7 @@ DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 DESKTOP_FILE="${DATA_HOME}/applications/${APP_NAME}.desktop"
 ICON_THEME_DIR="${DATA_HOME}/icons/hicolor"
 VENV_DIR="${SCRIPT_DIR}/.venv"
+LAYER_SHELL_QML_ROOT=""
 
 echo "=== MagicScribe — Installazione locale ==="
 
@@ -65,8 +66,8 @@ echo "[2/7] Installazione dipendenze riproducibili..."
     --quiet
 echo "     Dipendenze release installate dai pin verificati."
 
-# 3. Verifica runtime Qt/PySide6 + D-Bus + prerequisiti xcb/X11
-echo "[3/7] Verifica runtime PySide6/Qt, D-Bus e xcb/X11..."
+# 3. Verifica runtime Qt/PySide6 + D-Bus + Wayland/layer-shell
+echo "[3/7] Verifica runtime PySide6/Qt, D-Bus e KDE layer-shell..."
 "${VENV_DIR}/bin/python" - <<'PY'
 import ctypes.util
 from pathlib import Path
@@ -84,30 +85,84 @@ assert QQmlApplicationEngine is not None
 assert QApplication is not None
 assert jeepney is not None
 
-plugins_root = Path(
-    QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)
-)
-xcb_plugin = plugins_root / "platforms" / "libqxcb.so"
-if not xcb_plugin.is_file():
-    raise SystemExit(f"Plugin Qt xcb non trovato: {xcb_plugin}")
+plugins_root = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))
+platforms_dir = plugins_root / "platforms"
+wayland_plugins = sorted(platforms_dir.glob("libqwayland*.so"))
+if not wayland_plugins:
+    raise SystemExit(
+        "Plugin Qt Wayland non trovato in "
+        f"{platforms_dir}; il porting nativo richiede il QPA Wayland"
+    )
 
 missing_native = [
-    name for name in ("X11", "Xext")
+    name for name in ("wayland-client", "xkbcommon")
     if ctypes.util.find_library(name) is None
 ]
 if missing_native:
     raise SystemExit(
-        "Librerie native richieste dal runtime xcb mancanti: "
+        "Librerie native richieste dal runtime Wayland mancanti: "
         + ", ".join(missing_native)
     )
 
 print(
     f"     PySide6/Qt {qVersion()} OK "
-    "(Jeepney D-Bus, Qt xcb, X11 e Xext disponibili)"
+    f"(Jeepney, Wayland QPA={len(wayland_plugins)}, wayland-client, xkbcommon)"
 )
 PY
 
-# 4. Verifica modulo QML
+QT_PATHS6="$(command -v qtpaths6 || true)"
+if [[ -z "${QT_PATHS6}" && -x /usr/lib/qt6/bin/qtpaths6 ]]; then
+    QT_PATHS6="/usr/lib/qt6/bin/qtpaths6"
+fi
+if [[ -z "${QT_PATHS6}" ]]; then
+    echo "ERRORE: qtpaths6 non trovato; necessario per verificare l'ABI di layer-shell-qt." >&2
+    exit 1
+fi
+
+PYSIDE_QT_VERSION="$("${VENV_DIR}/bin/python" - <<'PY'
+from PySide6.QtCore import qVersion
+print(qVersion())
+PY
+)"
+SYSTEM_QT_VERSION="$("${QT_PATHS6}" --qt-version)"
+if [[ "${PYSIDE_QT_VERSION}" != "${SYSTEM_QT_VERSION}" ]]; then
+    echo "ERRORE: Qt PySide6=${PYSIDE_QT_VERSION}, Qt sistema=${SYSTEM_QT_VERSION}." >&2
+    echo "layer-shell-qt usa API private QtWayland: le versioni devono coincidere." >&2
+    exit 1
+fi
+
+LAYER_SHELL_QML_ROOT="$(
+    PYTHONPATH="${SCRIPT_DIR}" "${VENV_DIR}/bin/python" - <<'PY'
+from ui.native.layer_shell import find_layer_shell_qml_root
+root = find_layer_shell_qml_root()
+if root is None:
+    raise SystemExit(
+        "Modulo org.kde.layershell non trovato; su CachyOS/Arch installare layer-shell-qt"
+    )
+print(root)
+PY
+)"
+echo "     layer-shell-qt QML: ${LAYER_SHELL_QML_ROOT} (ABI Qt ${SYSTEM_QT_VERSION})"
+
+# xcb/X11 resta soltanto un rollback diagnostico durante il gate di migrazione.
+if "${VENV_DIR}/bin/python" - <<'PY' >/dev/null 2>&1
+import ctypes.util
+from pathlib import Path
+from PySide6.QtCore import QLibraryInfo
+plugins = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)) / "platforms"
+raise SystemExit(0 if (
+    (plugins / "libqxcb.so").is_file()
+    and ctypes.util.find_library("X11") is not None
+    and ctypes.util.find_library("Xext") is not None
+) else 1)
+PY
+then
+    echo "     Rollback xcb/X11: disponibile"
+else
+    echo "     Rollback xcb/X11: non disponibile"
+fi
+
+# 4. Verifica modulo QML, incluso il boundary KDE di sistema
 echo "[4/7] Verifica sorgenti QML..."
 if [ ! -x "${VENV_DIR}/bin/pyside6-qmllint" ]; then
     echo "ERRORE: pyside6-qmllint non disponibile nell'ambiente virtuale." >&2
@@ -116,8 +171,9 @@ fi
 "${VENV_DIR}/bin/pyside6-qmllint" \
     --max-warnings 0 \
     -I "${SCRIPT_DIR}/ui/qml" \
+    -I "${LAYER_SHELL_QML_ROOT}" \
     "${SCRIPT_DIR}"/ui/qml/MagicScribe/*.qml
-echo "     Modulo QML valido e senza warning."
+echo "     Modulo QML + layer-shell valido e senza warning."
 
 # 5. Directory di configurazione
 echo "[5/7] Creazione directory di configurazione..."
@@ -163,14 +219,10 @@ if "=" in value:
 encoded = []
 for char in value:
     if char == "\\":
-        # Exec escaping + general string escaping: una backslash letterale
-        # richiede quattro backslash nel file desktop.
         encoded.append("\\\\\\\\")
     elif char in {'"', "`", "$"}:
-        # Il quoting Exec richiede una backslash; il livello string la raddoppia.
         encoded.append("\\\\" + char)
     elif char == "%":
-        # '%' introduce i field code Exec; '%%' rappresenta il carattere letterale.
         encoded.append("%%")
     else:
         encoded.append(char)
