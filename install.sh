@@ -53,14 +53,14 @@ else
     echo "     Ambiente virtuale valido."
 fi
 
-# 2. Dipendenze: una sola sorgente di verità in pyproject.toml
-echo "[2/6] Installazione dipendenze runtime pinned..."
+# 2. Dipendenze: una sola sorgente di verità in requirements.txt
+echo "[2/6] Installazione dipendenze pinned..."
 "${VENV_DIR}/bin/python" -m pip install "pip==${PIP_VERSION}" --quiet
 "${VENV_DIR}/bin/python" -m pip install \
-    --group "${SCRIPT_DIR}/pyproject.toml:runtime" \
+    -r "${SCRIPT_DIR}/requirements.txt" \
     --quiet
 "${VENV_DIR}/bin/python" -m pip check
-echo "     Ambiente runtime coerente."
+echo "     Ambiente coerente."
 
 # 3. Verifica runtime Qt/PySide6 + D-Bus + Wayland/layer-shell
 echo "[3/6] Verifica runtime PySide6/Qt, D-Bus e KDE layer-shell..."
