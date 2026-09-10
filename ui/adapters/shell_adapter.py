@@ -62,6 +62,28 @@ class ShellAdapter(QObject):
         service = self._global_shortcuts
         return service is not None and service.active
 
+    @Property(float)
+    def controlPanelX(self) -> float:
+        window = self._coordinator._control_window
+        if window is None:
+            return 20.0
+        value = window.property("layerShellPanelX")
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 20.0
+
+    @Property(float)
+    def controlPanelY(self) -> float:
+        window = self._coordinator._control_window
+        if window is None:
+            return 20.0
+        value = window.property("layerShellPanelY")
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 20.0
+
     @Slot(result=QPoint)
     def global_cursor_position(self) -> QPoint:
         """Restituisce l'ultima posizione globale del puntatore nota a Qt."""
