@@ -111,6 +111,50 @@ class ShellAdapter(QObject):
     def controlLogoCenterY(self) -> float:
         return self._control_logo_center().y()
 
+    def _floating_palette_center(self) -> QPointF | None:
+        """Centro corrente della floating icon nella sua layer-surface."""
+        window = self._coordinator._floating_window
+        if window is None:
+            return None
+
+        try:
+            x = float(window.property("layerShellPaletteX"))
+            y = float(window.property("layerShellPaletteY"))
+            width = float(window.property("paletteWidth"))
+            height = float(window.property("paletteHeight"))
+        except (TypeError, ValueError):
+            return None
+        return QPointF(x + width / 2.0, y + height / 2.0)
+
+    def _align_control_logo_to_floating(self) -> None:
+        """Allinea 1:1 il logo toolbar alla floating icon prima del restore.
+
+        Le due layer-surface Wayland sono fullscreen e condividono lo stesso
+        sistema di coordinate. Trasliamo soltanto ``toolbarHost`` del delta tra
+        i due centri: il logo della toolbar riappare quindi esattamente dove si
+        trovava la floating icon, anche dopo averla trascinata.
+        """
+        if self._coordinator._absolute_positioning:
+            return
+
+        control = self._coordinator._control_window
+        floating_center = self._floating_palette_center()
+        if control is None or floating_center is None:
+            return
+
+        logo_center = self._control_logo_center()
+        panel_x = self._control_panel_coordinate("layerShellPanelX", 20.0)
+        panel_y = self._control_panel_coordinate("layerShellPanelY", 20.0)
+
+        control.setProperty(
+            "layerShellPanelX",
+            panel_x + floating_center.x() - logo_center.x(),
+        )
+        control.setProperty(
+            "layerShellPanelY",
+            panel_y + floating_center.y() - logo_center.y(),
+        )
+
     @Slot(result=QPoint)
     def global_cursor_position(self) -> QPoint:
         """Restituisce l'ultima posizione globale del puntatore nota a Qt."""
@@ -177,6 +221,7 @@ class ShellAdapter(QObject):
 
     @Slot()
     def restore_control_panel(self) -> None:
+        self._align_control_logo_to_floating()
         self._coordinator.restore_control_panel()
 
     @Slot()
