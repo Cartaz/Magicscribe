@@ -13,10 +13,6 @@ ApplicationWindow {
     required property var shellAdapter
     required property var toolModel
 
-    property bool layerShellPlacement: false
-    property bool layerShellFullscreen: false
-    property real layerShellMarginLeft: 20
-    property real layerShellMarginTop: 20
     property alias layerShellPanelX: toolbarHost.x
     property alias layerShellPanelY: toolbarHost.y
 
@@ -48,14 +44,12 @@ ApplicationWindow {
                                         )
 
     visible: false
-    width: layerShellFullscreen ? currentScreenWidth : panelWidth
-    height: layerShellFullscreen ? currentScreenHeight : panelHeight
-    minimumWidth: layerShellFullscreen ? 1 : panelWidth
-    minimumHeight: layerShellFullscreen
-                   ? 1
-                   : Math.min(360, Math.max(160, safeDesktopHeight - 40))
-    maximumWidth: layerShellFullscreen ? 16777215 : panelWidth
-    maximumHeight: layerShellFullscreen ? 16777215 : preferredHeight
+    width: currentScreenWidth
+    height: currentScreenHeight
+    minimumWidth: 1
+    minimumHeight: 1
+    maximumWidth: 16777215
+    maximumHeight: 16777215
     title: "MagicScribe"
     color: "transparent"
     flags: Qt.FramelessWindowHint
@@ -63,7 +57,7 @@ ApplicationWindow {
            | Qt.Tool
 
     function syncLayerShellInputRegion() {
-        if (!root.layerShellFullscreen || !root.visible)
+        if (!root.visible)
             return
         root.shellAdapter.set_control_input_region(
                     toolbarHost.x,
@@ -73,8 +67,6 @@ ApplicationWindow {
     }
 
     function clampToolbarHost() {
-        if (!root.layerShellFullscreen)
-            return
         toolbarHost.x = Math.max(
                     0,
                     Math.min(root.width - toolbarHost.width, toolbarHost.x))
@@ -141,8 +133,8 @@ ApplicationWindow {
 
     Item {
         id: toolbarHost
-        x: root.layerShellFullscreen ? 20 : 0
-        y: root.layerShellFullscreen ? 20 : 0
+        x: 20
+        y: 20
         width: root.panelWidth
         height: root.panelHeight
 
@@ -220,16 +212,12 @@ ApplicationWindow {
                         ToolTip.text: "Riduci · " + root.shellAdapter.minimizeShortcut
 
                         DragHandler {
-                            target: root.layerShellFullscreen ? toolbarHost : null
+                            target: toolbarHost
                             acceptedButtons: Qt.LeftButton
                             xAxis.minimum: 0
                             xAxis.maximum: Math.max(0, root.width - toolbarHost.width)
                             yAxis.minimum: 0
                             yAxis.maximum: Math.max(0, root.height - toolbarHost.height)
-                            onActiveChanged: {
-                                if (active && !root.layerShellFullscreen)
-                                    root.startSystemMove()
-                            }
                         }
                     }
 
