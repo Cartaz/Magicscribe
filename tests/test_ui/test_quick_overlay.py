@@ -8,7 +8,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QImage, QPainter
-from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
 
 from config.settings import Settings
@@ -18,7 +17,6 @@ from ui.adapters.tool_adapter import ToolAdapter
 from ui.drawing_engine import DrawingEngine
 from ui.quick.drawing_canvas import DrawingCanvas
 from ui.quick.overlay_surface import OverlaySurface
-import ui.quick.overlay_surface as overlay_surface_module
 
 _APP = QApplication.instance() or QApplication([])
 
@@ -39,9 +37,13 @@ def _close(surface, settings, drawing_adapter, tool_adapter) -> None:
     _APP.processEvents()
 
 
-def test_overlay_surface_toggles_native_input_transparency(tmp_path) -> None:
+def test_overlay_surface_toggles_native_input_transparency(
+    tmp_path, overlay_window_component
+) -> None:
     settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
-    surface = OverlaySurface(drawing_adapter, tool_adapter)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
     surface.show()
     _APP.processEvents()
     try:
@@ -57,31 +59,45 @@ def test_overlay_surface_toggles_native_input_transparency(tmp_path) -> None:
         _close(surface, settings, drawing_adapter, tool_adapter)
 
 
-def test_native_wayland_builds_one_overlay_per_screen(tmp_path, monkeypatch) -> None:
+def test_overlay_builds_one_layer_surface_per_screen(
+    tmp_path, overlay_window_component
+) -> None:
     settings, _controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
-    monkeypatch.setattr(overlay_surface_module, "_platform_name", lambda: "wayland")
-
-    class _FakeLayerShellComponent:
-        @staticmethod
-        def create():
-            return QQuickWindow()
-
-        @staticmethod
-        def errors():
-            return []
-
-    def _fake_prepare(surface: OverlaySurface) -> None:
-        surface._wayland_component = _FakeLayerShellComponent()
-
-    monkeypatch.setattr(OverlaySurface, "_prepare_wayland_component", _fake_prepare)
-    surface = OverlaySurface(drawing_adapter, tool_adapter)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
     try:
         screens = list(_APP.screens())
         assert screens
+        assert list(surface.windows) == overlay_window_component.created
         assert len(surface.windows) == len(screens)
         for view in surface._views:
+            assert view.window.screen() is view.screen
             geometry = view.screen.geometry()
             assert view.canvas.global_origin() == QPointF(geometry.x(), geometry.y())
+    finally:
+        _close(surface, settings, drawing_adapter, tool_adapter)
+
+
+def test_screen_topology_change_rebuilds_visible_surfaces(
+    tmp_path, overlay_window_component
+) -> None:
+    settings, _controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
+    surface.show()
+    try:
+        before = surface.windows
+        surface._on_screen_topology_changed()
+        _APP.processEvents()
+        after = surface.windows
+        assert len(after) == len(_APP.screens())
+        assert not set(before) & set(after)
+        assert all(window.isVisible() for window in after)
+        assert all(
+            window.flags() & Qt.WindowType.WindowTransparentForInput for window in after
+        )
     finally:
         _close(surface, settings, drawing_adapter, tool_adapter)
 
