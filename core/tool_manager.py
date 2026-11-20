@@ -69,6 +69,3 @@ class ToolManager:
         if not self._settings.set(spec.size_key, size):
             return False
         return self._settings.get(spec.size_key) != before
-
-    def all_tools(self) -> list[ToolType]:
-        return list(ToolType)

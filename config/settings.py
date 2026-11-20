@@ -131,18 +131,6 @@ class Settings:
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Errore caricamento impostazioni: %s", exc)
 
-    def save(self) -> None:
-        if self._executor is not None:
-            self._queue_save()
-            self.flush()
-            return
-        self._write_snapshot(dict(self._data))
-
-    def flush(self) -> None:
-        executor = self._executor
-        if executor is not None:
-            executor.submit(lambda: None).result()
-
     def close(self) -> None:
         executor = self._executor
         if executor is None:
@@ -162,12 +150,6 @@ class Settings:
     def get(self, key: str) -> Any:
         return self._data.get(key, _DEFAULTS.get(key))
 
-    def is_valid(self, key: str, value: Any) -> bool:
-        if key not in _DEFAULTS:
-            return False
-        valid, _normalized = _normalize_value(key, value)
-        return valid
-
     def set(self, key: str, value: Any) -> bool:
         if self._closed:
             logger.warning("Settings gia' chiuso: mutazione ignorata per '%s'", key)
@@ -184,17 +166,6 @@ class Settings:
         self._data[key] = normalized
         self._queue_save()
         return True
-
-    def reset(self) -> None:
-        if self._closed:
-            logger.warning("Settings gia' chiuso: reset ignorato")
-            return
-        self._data = dict(_DEFAULTS)
-        self._queue_save()
-        logger.info("Impostazioni ripristinate ai default")
-
-    def all(self) -> dict[str, Any]:
-        return dict(self._data)
 
     def _queue_save(self) -> None:
         snapshot = dict(self._data)

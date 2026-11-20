@@ -44,14 +44,14 @@ def test_overlay_surface_toggles_native_input_transparency(tmp_path) -> None:
     surface.show()
     _APP.processEvents()
     try:
-        assert surface.window.flags() & Qt.WindowType.WindowTransparentForInput
+        assert surface.windows[0].flags() & Qt.WindowType.WindowTransparentForInput
         drawing_adapter.toggle_drawing()
         _APP.processEvents()
         assert controller.is_drawing_active()
-        assert not (surface.window.flags() & Qt.WindowType.WindowTransparentForInput)
+        assert not (surface.windows[0].flags() & Qt.WindowType.WindowTransparentForInput)
         drawing_adapter.toggle_drawing()
         _APP.processEvents()
-        assert surface.window.flags() & Qt.WindowType.WindowTransparentForInput
+        assert surface.windows[0].flags() & Qt.WindowType.WindowTransparentForInput
     finally:
         _close(surface, settings, drawing_adapter, tool_adapter)
 

@@ -264,8 +264,6 @@ class PortalGlobalShortcutBackend(QObject):
                 )
 
                 self._create_and_bind_session(connection, responses)
-                if self._finished:
-                    return
                 self._finish(True, "")
                 self._activation_loop(connection, activations)
         except Exception as exc:
@@ -395,7 +393,6 @@ class GlobalShortcutService(QObject):
     """Coordina il backend nativo e le azioni canoniche dell'AppController."""
 
     activeChanged = Signal()
-    registrationFailed = Signal(str)
 
     def __init__(
         self,
@@ -450,10 +447,6 @@ class GlobalShortcutService(QObject):
     def active(self) -> bool:
         return self._active
 
-    @property
-    def shortcuts(self) -> tuple[ShortcutSpec, ...]:
-        return self._shortcuts
-
     def start(self, parent_window: str = "") -> None:
         if self._started:
             return
@@ -470,8 +463,6 @@ class GlobalShortcutService(QObject):
         if self._active != success:
             self._active = success
             self.activeChanged.emit()
-        if not success and message:
-            self.registrationFailed.emit(message)
 
     def _on_activated(self, shortcut_id: str) -> None:
         action = self._actions.get(shortcut_id)

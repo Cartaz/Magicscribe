@@ -97,29 +97,6 @@ class OverlaySurface:
     def windows(self) -> tuple[QQuickWindow, ...]:
         return tuple(view.window for view in self._views)
 
-    @property
-    def primary_window(self) -> QQuickWindow:
-        primary = QGuiApplication.primaryScreen()
-        for view in self._views:
-            if view.screen is primary:
-                return view.window
-        if not self._views:
-            raise RuntimeError("OverlaySurface senza finestre")
-        return self._views[0].window
-
-    @property
-    def window(self) -> QQuickWindow:
-        """Alias compatibile per il primary overlay window."""
-        return self.primary_window
-
-    @property
-    def canvas(self) -> DrawingCanvas:
-        primary = self.primary_window
-        for view in self._views:
-            if view.window is primary:
-                return view.canvas
-        raise RuntimeError("OverlaySurface senza canvas primaria")
-
     def show(self) -> None:
         self._shown = True
         for view in self._views:

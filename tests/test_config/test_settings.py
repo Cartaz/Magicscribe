@@ -83,22 +83,6 @@ def test_invalid_rgba_is_rejected(tmp_path: Path) -> None:
     assert settings.set("pen_color", "rgba(0,0,0,2)") is False
 
 
-def test_validation_has_no_side_effects(tmp_path: Path) -> None:
-    settings = _make_settings(tmp_path)
-    assert settings.is_valid("pen_size", 12.5)
-    assert not settings.is_valid("pen_size", 0)
-    assert settings.get("pen_size") == 5
-
-
-def test_reset_uses_canonical_defaults(tmp_path: Path) -> None:
-    settings = _make_settings(tmp_path)
-    settings.set("pen_size", 99)
-    settings.set("last_tool", "circle")
-    settings.reset()
-    assert settings.get("pen_size") == 5
-    assert settings.get("last_tool") == "pen"
-
-
 def test_background_persistence_flushes_on_close(tmp_path: Path) -> None:
     path = tmp_path / "background.json"
     settings = Settings(path=path, background_persistence=True)

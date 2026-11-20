@@ -249,13 +249,6 @@ class DrawingEngine:
         return filtered
 
     @staticmethod
-    def _smooth_path(points: list[Point]) -> QPainterPath:
-        """Costruisce il corpo consolidato del tratto Smooth."""
-        return DrawingEngine._smooth_path_from_filtered(
-            DrawingEngine._smooth_points(points)
-        )
-
-    @staticmethod
     def _smooth_path_from_filtered(points: list[Point]) -> QPainterPath:
         """Renderizza una B-spline cubica uniforme, locale e append-stable."""
         path = QPainterPath()

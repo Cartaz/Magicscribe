@@ -270,8 +270,6 @@ ApplicationWindow {
                             delegate: NeuIconButton {
                                 required property string toolId
                                 required property string displayLabel
-                                required property string glyph
-                                required property bool supportsColor
 
                                 width: 44
                                 height: 44
