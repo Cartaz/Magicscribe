@@ -33,7 +33,7 @@ QML -> adapters -> AppController -> domain services -> Settings
 
 `AppController` is the only mutable application boundary exposed to UI/native services. It owns drawing/visibility state, stroke history and tool workflows and publishes explicit lifecycle-safe callbacks to the Qt adapters. The core does not import Qt.
 
-Tool capabilities and defaults have one canonical declaration in `core.models.TOOL_SPECS`. Settings schema and tool configuration are derived from those domain specifications, while labels and glyphs remain presentation data in `ui.models.tool_list_model`. `Settings` is the sole persisted source of truth for tool selection/configuration; `ToolManager` derives live values instead of caching a second copy.
+Tool capabilities and defaults have one canonical declaration in `core.models.TOOL_SPECS`. Settings schema and tool configuration are derived from those domain specifications, while labels remain presentation data in `ui.models.tool_list_model`. `Settings` is the sole persisted source of truth for tool selection/configuration; `ToolManager` derives live values instead of caching a second copy.
 
 `WindowCoordinator` is the sole owner of control/floating `QWindow` objects, input masks and 1:1 minimize/restore geometry. `ShellAdapter` only exposes that public behavior to QML and never reaches into coordinator internals. In QML, the shared `SurfaceHost` component keeps the movable toolbar/palette inside its surface and reports its geometry as the input region.
 

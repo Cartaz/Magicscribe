@@ -73,10 +73,35 @@ def test_colors_are_normalized_rrggbb_only(tmp_path: Path) -> None:
     settings = _make_settings(tmp_path)
     assert settings.set("pen_color", " #AABBCC ")
     assert settings.get("pen_color") == "#aabbcc"
-    # #RRGGBBAA would be read by QColor as #AARRGGBB, i.e. a different color.
+    # The UI has no alpha: new values are only accepted as #rrggbb.
     assert settings.set("pen_color", "#AABBCCDD") is False
     assert settings.set("pen_color", "rgba(12, 34, 56, 0.5)") is False
     assert settings.get("pen_color") == "#aabbcc"
+
+
+def test_legacy_colors_saved_by_older_versions_are_migrated(tmp_path: Path) -> None:
+    keys = [spec.color_key for spec in TOOL_SPECS if spec.color_key is not None]
+    assert len(keys) >= 2
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps({keys[0]: "rgba(12, 34, 56, 0.5)", keys[1]: "#80AABBCC"}),
+        encoding="utf-8",
+    )
+    settings = Settings(path=path)
+    settings.load()
+    assert settings.get(keys[0]) == "#0c2238"
+    # Older versions followed QColor: 9-digit hex is #AARRGGBB.
+    assert settings.get(keys[1]) == "#aabbcc"
+
+
+def test_malformed_legacy_colors_fall_back_to_defaults(tmp_path: Path) -> None:
+    spec = next(spec for spec in TOOL_SPECS if spec.color_key is not None)
+    for legacy in ("rgba(300, 0, 0, 1)", "rgba(1, 2, 3)", "rgba(1, 2, 3, 2)", "#80aabbcz"):
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({spec.color_key: legacy}), encoding="utf-8")
+        settings = Settings(path=path)
+        settings.load()
+        assert settings.get(spec.color_key) == spec.default_color, legacy
 
 
 def test_last_tool_is_normalized_to_its_key(tmp_path: Path) -> None:

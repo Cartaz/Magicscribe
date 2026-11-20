@@ -102,3 +102,16 @@ def test_get_strokes_returns_copy() -> None:
     snapshot = sm.get_strokes()
     snapshot.clear()
     assert sm.stroke_count == 1
+
+
+def test_clear_all_on_empty_canvas_keeps_redo_available() -> None:
+    # Clear must stay recoverable: with nothing visible it is a no-op and must
+    # not silently discard the redo history the user may still want.
+    sm = StrokeManager()
+    stroke = _make_stroke()
+    sm.add_stroke(stroke)
+    sm.undo()
+
+    assert sm.clear_all() is False
+    assert sm.redo() is True
+    assert sm.get_strokes() == [stroke]

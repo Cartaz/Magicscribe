@@ -30,17 +30,43 @@ _SIZE_KEYS = frozenset(spec.size_key for spec in TOOL_SPECS)
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 
 
+def _is_hex(text: str) -> bool:
+    return bool(text) and all(ch in _HEX_DIGITS for ch in text)
+
+
 def _normalize_color(value: Any) -> tuple[bool, Any]:
     """Accetta solo ``#rrggbb``, l'unico formato prodotto dalla UI."""
     if isinstance(value, str):
         candidate = value.strip()
-        if (
-            len(candidate) == 7
-            and candidate.startswith("#")
-            and all(ch in _HEX_DIGITS for ch in candidate[1:])
-        ):
+        if len(candidate) == 7 and candidate.startswith("#") and _is_hex(candidate[1:]):
             return True, candidate.lower()
     return False, value
+
+
+def _migrate_legacy_color(value: Any) -> str | None:
+    """Converte in ``#rrggbb`` i formati salvati dalle versioni 1.x.
+
+    Le versioni precedenti salvavano ``#aarrggbb`` (convenzione QColor) e
+    ``rgba(r,g,b,a)``; la UI attuale non gestisce l'alfa, quindi si conserva
+    solo il colore.
+    """
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip().lower()
+    if len(candidate) == 9 and candidate.startswith("#") and _is_hex(candidate[1:]):
+        return f"#{candidate[3:]}"
+    if candidate.startswith("rgba(") and candidate.endswith(")"):
+        parts = [part.strip() for part in candidate[5:-1].split(",")]
+        if len(parts) != 4:
+            return None
+        try:
+            channels = [int(part) for part in parts[:3]]
+            alpha = float(parts[3])
+        except ValueError:
+            return None
+        if all(0 <= channel <= 255 for channel in channels) and 0.0 <= alpha <= 1.0:
+            return "#" + "".join(f"{channel:02x}" for channel in channels)
+    return None
 
 
 def _normalize_value(key: str, value: Any) -> tuple[bool, Any]:
@@ -102,6 +128,11 @@ class Settings:
                     logger.debug("Chiave impostazione obsoleta/sconosciuta: %s", key)
                     continue
                 valid, normalized = _normalize_value(key, value)
+                if not valid and key in _COLOR_KEYS:
+                    migrated = _migrate_legacy_color(value)
+                    if migrated is not None:
+                        logger.info("Colore legacy %r per '%s' migrato a %s", value, key, migrated)
+                        valid, normalized = True, migrated
                 if valid:
                     self._data[key] = normalized
                 else:
