@@ -27,7 +27,7 @@ if str(ROOT_DIR) not in sys.path:
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QPointF, Qt
 from PySide6.QtGui import QGuiApplication, QImage, QPainter
 
 from config.settings import Settings
@@ -136,6 +136,7 @@ def _measure_live_frame(
                 timings_ms.append((time.perf_counter() - start) * 1000.0)
 
         canvas.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         adapter.close()
         settings.close()
 

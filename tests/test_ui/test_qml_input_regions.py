@@ -142,3 +142,23 @@ def test_floating_palette_mask_follows_its_host(shell) -> None:
     clamped = _host_rect(floating, "paletteHost")
     assert clamped.right() + 1 == floating.width()
     assert floating.mask().boundingRect() == clamped
+
+
+def test_restore_near_an_edge_keeps_logo_on_palette_center(shell) -> None:
+    coordinator, control, floating = shell
+    coordinator.minimize_to_floating()
+    _settle()
+    # Palette dragged to the bottom-right corner of the surface.
+    floating.setProperty("layerShellPaletteX", float(floating.width() - 58))
+    floating.setProperty("layerShellPaletteY", float(floating.height() - 58))
+    _settle()
+    palette = _host_rect(floating, "paletteHost")
+
+    coordinator.restore_control_panel()
+    _settle()
+
+    logo = control.findChild(QQuickItem, "minimizeButton")
+    logo_center = logo.mapToScene(QPointF(logo.width() / 2, logo.height() / 2))
+    assert logo_center.x() == pytest.approx(palette.center().x() + 0.5, abs=1)
+    assert logo_center.y() == pytest.approx(palette.center().y() + 0.5, abs=1)
+    assert control.mask().boundingRect() == _host_rect(control, "toolbarHost")

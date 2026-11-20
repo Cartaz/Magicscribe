@@ -237,6 +237,10 @@ def main() -> None:
 
             logger.info("Applicazione avviata con shell e overlay Qt Quick")
             exit_code = app.exec()
+            # Dopo l'event loop un secondo Ctrl+C deve poter interrompere uno
+            # shutdown bloccato invece di chiamare quit() su un loop terminato.
+            for signum in (signal.SIGINT, signal.SIGTERM):
+                signal.signal(signum, signal.SIG_DFL)
             # Riferimenti Python mantenuti vivi per tutta la durata dell'event loop.
             _ = tray, floating_component, overlay_component, signal_timer
         finally:

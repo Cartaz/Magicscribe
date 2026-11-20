@@ -177,8 +177,9 @@ def test_live_frames_reuse_the_committed_strokes_layer(tmp_path, monkeypatch) ->
     canvas.setWidth(64)
     canvas.setHeight(64)
     drawing_adapter.toggle_drawing()
-    canvas._begin_stroke(QPointF(5, 5))
-    canvas._finish_stroke(QPointF(20, 5))
+    for y in (5, 10, 15):
+        canvas._begin_stroke(QPointF(5, y))
+        canvas._finish_stroke(QPointF(20, y))
 
     history_renders: list[int] = []
     original = DrawingEngine.render_strokes
@@ -194,13 +195,29 @@ def test_live_frames_reuse_the_committed_strokes_layer(tmp_path, monkeypatch) ->
             canvas._extend_stroke(QPointF(x, 40))
             image = _paint(canvas)
         # Una sola rasterizzazione della cronologia per tutti i frame live.
-        assert history_renders == [1]
+        assert history_renders == [3]
         assert image.pixelColor(10, 5).alpha() > 0
         assert image.pixelColor(30, 40).alpha() > 0
 
+        # Committing appends the new stroke to the layer without a rebuild.
         canvas._finish_stroke(QPointF(40, 40))
+        image = _paint(canvas)
+        assert history_renders == [3, 1]
+        assert image.pixelColor(30, 40).alpha() > 0
+        assert image.pixelColor(10, 5).alpha() > 0
+
+        # Toggling visibility does not touch the history either.
+        drawing_adapter.toggle_visibility()
+        drawing_adapter.toggle_visibility()
         _paint(canvas)
-        assert history_renders == [1, 2]
+        assert history_renders == [3, 1]
+
+        # Undo is not an append: the layer is rebuilt without the stroke.
+        drawing_adapter.undo()
+        image = _paint(canvas)
+        assert history_renders == [3, 1, 3]
+        assert image.pixelColor(30, 40).alpha() == 0
+        assert image.pixelColor(10, 15).alpha() > 0
     finally:
         canvas.deleteLater()
         drawing_adapter.close()

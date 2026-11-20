@@ -31,8 +31,9 @@ Item {
     Connections {
         target: host.surface
 
+        // Nessun clamp alla comparsa: il restore 1:1 della toolbar puo'
+        // posizionarla parzialmente fuori dalla surface (vedi FloatingPalette).
         function onVisibleChanged() {
-            host.clampToSurface()
             host.syncInputRegion()
         }
 

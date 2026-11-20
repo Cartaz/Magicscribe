@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import operator
 
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter
@@ -16,9 +17,10 @@ from ui.drawing_engine import DrawingEngine
 class DrawingCanvas(QQuickPaintedItem):
     """Superficie di disegno con coordinate canoniche globali del desktop.
 
-    I tratti gia' committati vengono rasterizzati una sola volta in un layer
-    cache, ricostruito solo quando cambiano cronologia, origine o dimensione:
-    durante il disegno ogni frame compone il layer e il solo tratto in corso.
+    I tratti gia' committati vivono in un layer cache: un nuovo tratto viene
+    aggiunto al layer esistente, mentre undo/redo/clear, origine o dimensione
+    lo ricostruiscono. Durante il disegno ogni frame compone il layer e il solo
+    tratto in corso.
     """
 
     def __init__(
@@ -33,6 +35,8 @@ class DrawingCanvas(QQuickPaintedItem):
         self._current_stroke: Stroke | None = None
         self._global_origin = QPointF(global_origin or QPointF())
         self._committed_layer: QImage | None = None
+        self._layer_strokes: list[Stroke] = []
+        self._layer_stale = True
 
         self.setAcceptedMouseButtons(
             Qt.MouseButton.LeftButton
@@ -43,7 +47,8 @@ class DrawingCanvas(QQuickPaintedItem):
         self.setOpaquePainting(False)
         self.setFillColor(QColor(0, 0, 0, 0))
 
-        adapter.repaintRequested.connect(self._on_committed_strokes_changed)
+        adapter.historyChanged.connect(self._on_history_changed)
+        adapter.annotationsVisibleChanged.connect(self.update)
         adapter.activeChanged.connect(self._on_active_changed)
 
     def set_global_origin(self, origin: QPointF) -> None:
@@ -51,7 +56,8 @@ class DrawingCanvas(QQuickPaintedItem):
         if self._global_origin == origin:
             return
         self._global_origin = QPointF(origin)
-        self._on_committed_strokes_changed()
+        self._committed_layer = None
+        self.update()
 
     def global_origin(self) -> QPointF:
         return QPointF(self._global_origin)
@@ -80,29 +86,44 @@ class DrawingCanvas(QQuickPaintedItem):
         height = max(1, math.ceil(self.height() * ratio))
 
         layer = self._committed_layer
-        if (
+        reusable = (
             layer is not None
             and layer.width() == width
             and layer.height() == height
             and layer.devicePixelRatio() == ratio
-        ):
+        )
+        if reusable and not self._layer_stale:
             return layer
 
-        layer = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
-        layer.setDevicePixelRatio(ratio)
-        layer.fill(Qt.GlobalColor.transparent)
+        strokes = self._adapter.strokes_snapshot()
+        previous = self._layer_strokes
+        appended = (
+            len(strokes) == len(previous) + 1
+            and all(map(operator.is_, previous, strokes))
+        )
+        if reusable and appended:
+            self._paint_on_layer(layer, strokes[-1:])
+        else:
+            layer = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+            layer.setDevicePixelRatio(ratio)
+            layer.fill(Qt.GlobalColor.transparent)
+            self._paint_on_layer(layer, strokes)
+            self._committed_layer = layer
+        self._layer_strokes = strokes
+        self._layer_stale = False
+        return layer
+
+    def _paint_on_layer(self, layer: QImage, strokes: list[Stroke]) -> None:
         layer_painter = QPainter(layer)
         try:
             layer_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             layer_painter.translate(-self._global_origin.x(), -self._global_origin.y())
-            DrawingEngine.render_strokes(layer_painter, self._adapter.strokes_snapshot())
+            DrawingEngine.render_strokes(layer_painter, strokes)
         finally:
             layer_painter.end()
-        self._committed_layer = layer
-        return layer
 
-    def _on_committed_strokes_changed(self) -> None:
-        self._committed_layer = None
+    def _on_history_changed(self) -> None:
+        self._layer_stale = True
         self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
