@@ -69,3 +69,13 @@ def test_empty_stroke_is_not_committed(tmp_path) -> None:
     controller = _make_controller(tmp_path)
     controller.finalize_stroke(Stroke(tool_type=ToolType.PEN))
     assert controller.stroke_count() == 0
+
+
+def test_clear_screen_can_be_undone(tmp_path) -> None:
+    controller = _make_controller(tmp_path)
+    stroke = Stroke(tool_type=ToolType.PEN, points=[Point(1, 2)])
+    controller.finalize_stroke(stroke)
+    controller.clear_screen()
+    assert controller.stroke_count() == 0
+    controller.undo()
+    assert controller.strokes_snapshot() == [stroke]
