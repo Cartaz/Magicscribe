@@ -10,13 +10,16 @@ Item {
 
     signal inputRegionRequested(real regionX, real regionY, real regionWidth, real regionHeight)
 
+    // surface e' null mentre il componente viene costruito (x/y iniziali).
     function clampToSurface() {
+        if (!host.surface)
+            return
         host.x = Math.max(0, Math.min(host.surface.width - host.width, host.x))
         host.y = Math.max(0, Math.min(host.surface.height - host.height, host.y))
     }
 
     function syncInputRegion() {
-        if (host.surface.visible)
+        if (host.surface && host.surface.visible)
             host.inputRegionRequested(host.x, host.y, host.width, host.height)
     }
 

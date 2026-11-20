@@ -35,6 +35,10 @@ def shell(tmp_path):
     shell_adapter = ShellAdapter(coordinator)
 
     engine = QQmlApplicationEngine()
+    qml_warnings: list[str] = []
+    engine.warnings.connect(
+        lambda errors: qml_warnings.extend(error.toString() for error in errors)
+    )
     engine.addImportPath(str(_QML_ROOT))
     engine.setInitialProperties(
         {
@@ -60,6 +64,8 @@ def shell(tmp_path):
     _settle()
     try:
         yield coordinator, control, floating
+        _settle()
+        assert qml_warnings == []
     finally:
         coordinator.shutdown()
         floating.deleteLater()
