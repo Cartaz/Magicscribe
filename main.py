@@ -81,12 +81,17 @@ _QT_MISMATCH_HINT = (
     "Il Qt di sistema non corrisponde a PySide6: rieseguire install.sh per "
     "allinearli."
 )
-_QT_MISMATCH_MARKERS = ("layershell", "incompatible qt library")
+_LAYER_SHELL_LOAD_FAILURES = ("cannot load library", "undefined symbol")
 
 
 def _looks_like_qt_mismatch(messages: list[str]) -> bool:
-    text = " ".join(messages).lower().replace("-", "")
-    return any(marker in text for marker in _QT_MISMATCH_MARKERS)
+    """Riconosce solo errori di ABI/caricamento, non errori QML generici."""
+    text = " ".join(messages).lower()
+    if "incompatible qt library" in text:
+        return True
+    return "layershell" in text.replace("-", "") and any(
+        failure in text for failure in _LAYER_SHELL_LOAD_FAILURES
+    )
 
 
 def _load_component(

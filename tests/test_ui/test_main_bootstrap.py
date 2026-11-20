@@ -39,11 +39,19 @@ def test_signal_received_before_the_event_loop_still_quits(
 
 
 def test_qt_mismatch_hint_only_for_layer_shell_or_qt_abi_errors() -> None:
+    # Real message from PySide6 6.11.2 against the system Qt 6.12.0.
     assert main._looks_like_qt_mismatch(
-        ['module "org.kde.layershell" plugin "LayerShellQtQml" not found']
+        [
+            "WaylandLayerSurface.qml:2:1: The plugin '/usr/lib/qt6/qml/org/kde/layershell/"
+            "libLayerShellQtQml.so' uses incompatible Qt library. (6.12.0) [release]"
+        ]
     )
     assert main._looks_like_qt_mismatch(
-        ["Cannot load library liblayer-shell-qt.so: incompatible Qt library"]
+        ["Cannot load library liblayer-shell-qt.so: undefined symbol: _ZN15QtWaylandClient"]
+    )
+    # Plain QML mistakes are not fixed by reinstalling PySide6.
+    assert not main._looks_like_qt_mismatch(
+        ['WaylandControlPanel.qml:9: Cannot assign to non-existent property "LayerShell.Window.foo"']
     )
     assert not main._looks_like_qt_mismatch(
         ["ControlPanel.qml:12: Type RaisedSurface unavailable"]

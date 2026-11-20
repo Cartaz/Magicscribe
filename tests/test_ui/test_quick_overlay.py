@@ -248,3 +248,84 @@ def test_history_changes_invalidate_the_committed_layer(tmp_path) -> None:
         tool_adapter.close()
         settings.close()
         _APP.processEvents()
+
+
+def _reference(canvas: DrawingCanvas, strokes) -> QImage:
+    image = QImage(64, 64, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        DrawingEngine.render_strokes(painter, strokes)
+    finally:
+        painter.end()
+    return image
+
+
+def test_history_rebuilds_are_bounded_by_the_undo_reach(tmp_path, monkeypatch) -> None:
+    import ui.quick.drawing_canvas as drawing_canvas
+
+    reach = 2
+    monkeypatch.setattr(drawing_canvas, "_UNDO_REACH", reach)
+    settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    canvas = DrawingCanvas(drawing_adapter)
+    canvas.setWidth(64)
+    canvas.setHeight(64)
+    drawing_adapter.toggle_drawing()
+
+    rendered: list[int] = []
+    original = DrawingEngine.render_strokes
+
+    def counting_render(painter, strokes):
+        rendered.append(len(strokes))
+        original(painter, strokes)
+
+    monkeypatch.setattr(DrawingEngine, "render_strokes", staticmethod(counting_render))
+
+    def step(action) -> int:
+        rendered.clear()
+        action()
+        image = _paint(canvas)
+        total = sum(rendered)
+        assert image == _reference(canvas, drawing_adapter.strokes_snapshot())
+        return total
+
+    try:
+        for index in range(12):
+            y = 3 + 5 * index
+
+            def draw(y=y):
+                canvas._begin_stroke(QPointF(5, y))
+                canvas._finish_stroke(QPointF(60, y))
+
+            # The new stroke, plus occasionally freezing reach + 1 older ones.
+            assert step(draw) <= reach + 2
+        for action in (drawing_adapter.undo, drawing_adapter.undo, drawing_adapter.redo):
+            # Only the tail beyond the frozen base is redrawn, not all 12 strokes.
+            assert step(action) <= 2 * reach
+
+        assert step(drawing_adapter.clear_screen) == 0
+        assert canvas._committed_layer is None
+        assert step(drawing_adapter.undo) <= 2 * reach
+    finally:
+        canvas.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
+        settings.close()
+        _APP.processEvents()
+
+
+def test_empty_canvas_holds_no_layer(tmp_path) -> None:
+    settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    canvas = DrawingCanvas(drawing_adapter)
+    canvas.setWidth(64)
+    canvas.setHeight(64)
+    try:
+        _paint(canvas)
+        assert canvas._committed_layer is None
+    finally:
+        canvas.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
+        settings.close()
+        _APP.processEvents()

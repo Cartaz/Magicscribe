@@ -92,6 +92,9 @@ def test_legacy_colors_saved_by_older_versions_are_migrated(tmp_path: Path) -> N
     assert settings.get(keys[0]) == "#0c2238"
     # Older versions followed QColor: 9-digit hex is #AARRGGBB.
     assert settings.get(keys[1]) == "#aabbcc"
+    # The migration is written back once, so it does not repeat at every start.
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved[keys[0]] == "#0c2238" and saved[keys[1]] == "#aabbcc"
 
 
 def test_malformed_legacy_colors_fall_back_to_defaults(tmp_path: Path) -> None:

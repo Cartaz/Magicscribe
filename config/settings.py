@@ -123,6 +123,7 @@ class Settings:
             if not isinstance(saved, dict):
                 logger.warning("Configurazione ignorata: la radice JSON deve essere un oggetto")
                 return
+            migrated_any = False
             for key, value in saved.items():
                 if key not in _DEFAULTS:
                     logger.debug("Chiave impostazione obsoleta/sconosciuta: %s", key)
@@ -133,11 +134,15 @@ class Settings:
                     if migrated is not None:
                         logger.info("Colore legacy %r per '%s' migrato a %s", value, key, migrated)
                         valid, normalized = True, migrated
+                        migrated_any = True
                 if valid:
                     self._data[key] = normalized
                 else:
                     logger.warning("Valore non valido per '%s': %r; uso il default", key, value)
             logger.info("Impostazioni caricate da %s", self._path)
+            if migrated_any:
+                # Riscrive il file una volta sola: il formato legacy non torna.
+                self._queue_save()
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Errore caricamento impostazioni: %s", exc)
 
