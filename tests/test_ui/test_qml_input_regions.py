@@ -162,3 +162,11 @@ def test_restore_near_an_edge_keeps_logo_on_palette_center(shell) -> None:
     assert logo_center.x() == pytest.approx(palette.center().x() + 0.5, abs=1)
     assert logo_center.y() == pytest.approx(palette.center().y() + 0.5, abs=1)
     assert control.mask().boundingRect() == _host_rect(control, "toolbarHost")
+
+
+def test_toolbar_shows_every_control_without_scrolling(shell) -> None:
+    _coordinator, control, _floating = shell
+    viewport = control.findChild(QQuickItem, "toolbarViewport")
+    assert viewport is not None
+    assert viewport.property("contentHeight") <= viewport.height()
+    assert viewport.property("interactive") is False

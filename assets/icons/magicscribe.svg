@@ -1,22 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 1254 1254" role="img" aria-label="MagicScribe icon">
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 64 64" role="img" aria-label="MagicScribe icon">
+  <!-- App icon (.desktop, tray, window): the toolbar logo button as an image.
+       The "mark" group is copied verbatim from toolbar/logo.svg. No filters,
+       so it stays sharp from 16 px up. -->
   <defs>
-    <radialGradient id="discGrad" cx="50%" cy="38%" r="65%"><stop offset="0%" stop-color="#2e3440"/><stop offset="45%" stop-color="#232934"/><stop offset="78%" stop-color="#181d27"/><stop offset="100%" stop-color="#10141d"/></radialGradient>
-    <linearGradient id="discHighlight" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#5a6372" stop-opacity="0.48"/><stop offset="25%" stop-color="#3f4654" stop-opacity="0.18"/><stop offset="100%" stop-color="#10141d" stop-opacity="0"/></linearGradient>
-    <linearGradient id="frameGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6e7480"/><stop offset="18%" stop-color="#4f5561"/><stop offset="60%" stop-color="#353b46"/><stop offset="100%" stop-color="#2a303b"/></linearGradient>
-    <linearGradient id="screenGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0a0d13"/><stop offset="55%" stop-color="#121722"/><stop offset="100%" stop-color="#07090e"/></linearGradient>
-    <linearGradient id="standGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#575e69"/><stop offset="100%" stop-color="#2f3540"/></linearGradient>
-    <linearGradient id="penBodyGrad" x1="0" y1="0" x2="0.92" y2="1"><stop offset="0%" stop-color="#7e8794"/><stop offset="18%" stop-color="#4e5560"/><stop offset="55%" stop-color="#232833"/><stop offset="100%" stop-color="#0f131b"/></linearGradient>
-    <linearGradient id="penCapGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8b919d"/><stop offset="30%" stop-color="#444b57"/><stop offset="100%" stop-color="#090d14"/></linearGradient>
-    <linearGradient id="orangeCore" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffb300"/><stop offset="55%" stop-color="#ff9800"/><stop offset="100%" stop-color="#ff7f00"/></linearGradient>
-    <linearGradient id="orangeTip" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffd24e"/><stop offset="50%" stop-color="#ffb000"/><stop offset="100%" stop-color="#ff8500"/></linearGradient>
-    <filter id="discGlow" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="18" result="blur"/><feColorMatrix in="blur" type="matrix" values="1 0 0 0 0 0 0.55 0 0 0 0 0 0 0 0 0 0 0 1 0" result="warm"/><feMerge><feMergeNode in="warm"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%"><feOffset in="SourceAlpha" dx="0" dy="26" result="shadowOffset"/><feGaussianBlur in="shadowOffset" stdDeviation="24" result="shadowBlur"/><feColorMatrix in="shadowBlur" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.65 0" result="shadow"/><feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <filter id="innerShadow" x="-20%" y="-20%" width="140%" height="140%"><feOffset dx="0" dy="8"/><feGaussianBlur stdDeviation="10" result="offset-blur"/><feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse"/><feFlood flood-color="#000000" flood-opacity="0.35" result="color"/><feComposite operator="in" in="color" in2="inverse" result="shadow"/><feComposite operator="over" in="shadow" in2="SourceGraphic"/></filter>
-    <filter id="orangeGlow" x="-40%" y="-60%" width="180%" height="220%"><feGaussianBlur stdDeviation="16" result="g1"/><feColorMatrix in="g1" type="matrix" values="1 0 0 0 0 0 0.62 0 0 0 0 0 0 0 0 0 0 0 1 0" result="g2"/><feMerge><feMergeNode in="g2"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <filter id="orangeGlowStrong" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="11" result="g1"/><feColorMatrix in="g1" type="matrix" values="1 0 0 0 0 0 0.6 0 0 0 0 0 0 0 0 0 0 0 1 0" result="g2"/><feMerge><feMergeNode in="g2"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6a717d"/>
+      <stop offset="1" stop-color="#3c424d"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffb000"/>
+      <stop offset="1" stop-color="#ff6a00"/>
+    </linearGradient>
   </defs>
-  <g filter="url(#discGlow)"><circle cx="627" cy="627" r="548" fill="none" stroke="#ff7f00" stroke-width="22" stroke-linecap="round" opacity="0.95"/><circle cx="627" cy="627" r="548" fill="url(#discGrad)"/><path d="M120 454 C255 178, 980 138, 1114 450" fill="none" stroke="url(#discHighlight)" stroke-width="26" stroke-linecap="round" opacity="0.9"/><circle cx="627" cy="627" r="528" fill="none" stroke="#2b313c" stroke-width="8" opacity="0.5"/></g>
-  <g filter="url(#softShadow)"><rect x="235" y="307" width="777" height="545" rx="64" ry="64" fill="url(#frameGrad)"/><rect x="285" y="357" width="677" height="425" rx="42" ry="42" fill="url(#screenGrad)" filter="url(#innerShadow)"/><path d="M337 624 C421 542, 504 503, 560 521 C596 533, 576 592, 546 639 C522 677, 539 710, 585 713 C660 718, 790 665, 843 626" fill="none" stroke="url(#orangeCore)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" filter="url(#orangeGlowStrong)"/><path d="M503 850 C512 919, 516 932, 552 932 L704 932 C739 932, 743 918, 751 850" fill="url(#standGrad)"/><rect x="446" y="930" width="348" height="39" rx="16" ry="16" fill="url(#standGrad)"/></g>
-  <g transform="translate(860 285) rotate(38)" filter="url(#softShadow)"><rect x="-56" y="0" width="112" height="390" rx="56" ry="56" fill="url(#penBodyGrad)"/><rect x="-24" y="110" width="48" height="94" rx="24" ry="24" fill="#1d222b" stroke="#3f4550" stroke-width="4"/><rect x="-56" y="8" width="112" height="54" rx="27" ry="27" fill="url(#orangeCore)"/><ellipse cx="0" cy="0" rx="56" ry="52" fill="url(#penCapGrad)"/><path d="M-56 390 L56 390 L30 468 Q0 494 -30 468 Z" fill="url(#penBodyGrad)"/><path d="M-30 468 Q0 495 30 468 L14 520 Q0 536 -14 520 Z" fill="url(#orangeTip)" filter="url(#orangeGlow)"/></g>
-  <circle cx="627" cy="627" r="548" fill="none" stroke="#07090e" stroke-width="5" opacity="0.9"/>
+  <circle cx="32" cy="32" r="29.5" fill="none" stroke="#ff6600" stroke-opacity=".22" stroke-width="4"/>
+  <circle cx="32" cy="32" r="28" fill="#141414" stroke="#ff6600" stroke-width="1.6"/>
+  <g transform="translate(12 12) scale(1.25)">
+    <g id="mark">
+      <rect x="3" y="7" width="23" height="16" rx="3" fill="url(#frame)"/>
+      <rect x="5" y="9" width="19" height="12" rx="1.5" fill="#0c0f15"/>
+      <path d="M13 23h3l.6 2.6h-4.2z" fill="#4a505b"/>
+      <rect x="10" y="25.3" width="9" height="1.9" rx=".95" fill="#565d68"/>
+      <path d="M7.4 16.4c2-2.6 4.1-3.6 5.3-3.1 1.1.5.2 2-.4 2.9-.6 1-.1 1.8 1.2 1.8 2 0 4.3-1.1 5.6-2"
+            fill="none" stroke="url(#ink)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+      <g transform="translate(27.6 3.2) rotate(38)">
+        <rect x="-2.6" y="-.4" width="5.2" height="11.6" rx="2.6" fill="#141414"/>
+        <rect x="-2" y="0" width="4" height="10.4" rx="2" fill="#8a919c"/>
+        <rect x="-2" y="1.6" width="4" height="1.8" fill="#ff8a00"/>
+        <path d="M-2 10.2h4l-2 3.6z" fill="#ffb000" stroke="#141414" stroke-width=".6" stroke-linejoin="round"/>
+      </g>
+    </g>
+  </g>
 </svg>

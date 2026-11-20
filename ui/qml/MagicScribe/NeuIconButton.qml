@@ -38,18 +38,10 @@ Button {
             cached: false
         }
 
-        RectangularShadow {
+        AccentGlow {
             anchors.fill: buttonSurface
-            offset: Qt.vector2d(0, 0)
-            blur: 14
             radius: Theme.radiusSmall
-            color: Theme.accentGlow
-            opacity: control.selected && control.enabled ? 0.72 : 0.0
-            cached: false
-
-            Behavior on opacity {
-                NumberAnimation { duration: Theme.animationFast }
-            }
+            shown: control.selected && control.enabled
         }
 
         Rectangle {
@@ -74,7 +66,7 @@ Button {
             color: "transparent"
             border.width: control.selected || control.pressed || control.activeFocus ? 1 : 0
             border.color: Theme.accent
-            opacity: control.selected ? 0.58 : 1.0
+            opacity: control.selected ? Theme.accentBorderOpacity : 1.0
         }
     }
 
