@@ -10,7 +10,7 @@ from threading import Lock
 from typing import Any
 
 from config.constants import PathDefaults
-from core.models import TOOL_SPECS
+from core.models import TOOL_SPECS, parse_tool_type
 
 logger = logging.getLogger(__name__)
 
@@ -27,37 +27,19 @@ _COLOR_KEYS = frozenset(
     spec.color_key for spec in TOOL_SPECS if spec.color_key is not None
 )
 _SIZE_KEYS = frozenset(spec.size_key for spec in TOOL_SPECS)
-_ALLOWED_TOOLS = frozenset(spec.key for spec in TOOL_SPECS)
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 
 
 def _normalize_color(value: Any) -> tuple[bool, Any]:
-    if not isinstance(value, str):
-        return False, value
-
-    candidate = value.strip()
-    if (
-        candidate.startswith("#")
-        and len(candidate) in (7, 9)
-        and all(ch in _HEX_DIGITS for ch in candidate[1:])
-    ):
-        return True, candidate.lower()
-
-    if candidate.startswith("rgba(") and candidate.endswith(")"):
-        parts = [part.strip() for part in candidate[5:-1].split(",")]
-        if len(parts) != 4:
-            return False, value
-        try:
-            red, green, blue = (int(parts[index]) for index in range(3))
-            alpha = float(parts[3])
-        except (TypeError, ValueError):
-            return False, value
-        if not all(0 <= channel <= 255 for channel in (red, green, blue)):
-            return False, value
-        if not 0.0 <= alpha <= 1.0:
-            return False, value
-        return True, f"rgba({red},{green},{blue},{alpha:g})"
-
+    """Accetta solo ``#rrggbb``, l'unico formato prodotto dalla UI."""
+    if isinstance(value, str):
+        candidate = value.strip()
+        if (
+            len(candidate) == 7
+            and candidate.startswith("#")
+            and all(ch in _HEX_DIGITS for ch in candidate[1:])
+        ):
+            return True, candidate.lower()
     return False, value
 
 
@@ -78,11 +60,8 @@ def _normalize_value(key: str, value: Any) -> tuple[bool, Any]:
         return (True, value) if isinstance(value, bool) else (False, value)
 
     if key == "last_tool":
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in _ALLOWED_TOOLS:
-                return True, normalized
-        return False, value
+        tool = parse_tool_type(value) if isinstance(value, str) else None
+        return (True, tool.name.lower()) if tool is not None else (False, value)
 
     return False, value
 

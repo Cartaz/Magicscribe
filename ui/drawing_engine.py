@@ -26,19 +26,6 @@ _SMOOTH_ALPHA = 0.28
 
 def _qcolor(color_str: str) -> QColor:
     """Converte una stringa colore in QColor restituendo sempre un colore valido."""
-    if not color_str:
-        return QColor("#000000")
-    if color_str.startswith("rgba("):
-        inner = color_str[5:-1]
-        parts = [p.strip() for p in inner.split(",")]
-        if len(parts) == 4:
-            try:
-                r, g, b = int(parts[0]), int(parts[1]), int(parts[2])
-                a = int(float(parts[3]) * 255)
-                return QColor(r, g, b, a)
-            except (ValueError, TypeError):
-                logger.warning("Colore rgba malformato: %r, uso nero", color_str)
-                return QColor("#000000")
     color = QColor(color_str)
     if not color.isValid():
         logger.warning("Colore non valido: %r, uso nero", color_str)

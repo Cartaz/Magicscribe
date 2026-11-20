@@ -54,6 +54,16 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     ToolSpec(ToolType.SMOOTH, 5, "#ff0000"),
 )
 TOOL_SPEC_BY_TYPE = {spec.tool_type: spec for spec in TOOL_SPECS}
+_TOOL_BY_KEY = {spec.key: spec.tool_type for spec in TOOL_SPECS}
+
+
+def parse_tool_type(value: object) -> ToolType | None:
+    """Converte un id strumento (es. ``"pen"``, ``" Circle "``) nel suo ToolType."""
+    if isinstance(value, ToolType):
+        return value
+    if not isinstance(value, str):
+        return None
+    return _TOOL_BY_KEY.get(value.strip().lower())
 
 
 @dataclass(frozen=True)

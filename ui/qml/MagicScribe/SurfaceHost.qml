@@ -1,0 +1,46 @@
+import QtQuick
+
+// Area interattiva dentro una surface fullscreen: la surface resta ferma, si
+// muove solo questo host. Lo mantiene dentro la surface e comunica la sua
+// geometria come input region, così il resto della surface resta click-through.
+Item {
+    id: host
+
+    required property Window surface
+
+    signal inputRegionRequested(real regionX, real regionY, real regionWidth, real regionHeight)
+
+    function clampToSurface() {
+        host.x = Math.max(0, Math.min(host.surface.width - host.width, host.x))
+        host.y = Math.max(0, Math.min(host.surface.height - host.height, host.y))
+    }
+
+    function syncInputRegion() {
+        if (host.surface.visible)
+            host.inputRegionRequested(host.x, host.y, host.width, host.height)
+    }
+
+    onXChanged: syncInputRegion()
+    onYChanged: syncInputRegion()
+    onWidthChanged: syncInputRegion()
+    onHeightChanged: syncInputRegion()
+
+    Connections {
+        target: host.surface
+
+        function onVisibleChanged() {
+            host.clampToSurface()
+            host.syncInputRegion()
+        }
+
+        function onWidthChanged() {
+            host.clampToSurface()
+            host.syncInputRegion()
+        }
+
+        function onHeightChanged() {
+            host.clampToSurface()
+            host.syncInputRegion()
+        }
+    }
+}

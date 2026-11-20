@@ -69,18 +69,20 @@ def test_non_object_json_falls_back_to_defaults(tmp_path: Path) -> None:
     assert settings.get("pen_size") == 5
 
 
-def test_supported_color_formats_are_normalized(tmp_path: Path) -> None:
+def test_colors_are_normalized_rrggbb_only(tmp_path: Path) -> None:
     settings = _make_settings(tmp_path)
-    assert settings.set("pen_color", "#AABBCCDD")
-    assert settings.get("pen_color") == "#aabbccdd"
-    assert settings.set("pen_color", "rgba(12, 34, 56, 0.5)")
-    assert settings.get("pen_color") == "rgba(12,34,56,0.5)"
+    assert settings.set("pen_color", " #AABBCC ")
+    assert settings.get("pen_color") == "#aabbcc"
+    # #RRGGBBAA would be read by QColor as #AARRGGBB, i.e. a different color.
+    assert settings.set("pen_color", "#AABBCCDD") is False
+    assert settings.set("pen_color", "rgba(12, 34, 56, 0.5)") is False
+    assert settings.get("pen_color") == "#aabbcc"
 
 
-def test_invalid_rgba_is_rejected(tmp_path: Path) -> None:
+def test_last_tool_is_normalized_to_its_key(tmp_path: Path) -> None:
     settings = _make_settings(tmp_path)
-    assert settings.set("pen_color", "rgba(300,0,0,1)") is False
-    assert settings.set("pen_color", "rgba(0,0,0,2)") is False
+    assert settings.set("last_tool", " Circle ")
+    assert settings.get("last_tool") == "circle"
 
 
 def test_background_persistence_flushes_on_close(tmp_path: Path) -> None:

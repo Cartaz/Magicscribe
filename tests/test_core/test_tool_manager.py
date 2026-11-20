@@ -2,7 +2,8 @@
 
 from config.settings import Settings
 from core.models import ToolType
-from core.tool_manager import ToolManager, _parse_tool_type
+from core.models import parse_tool_type
+from core.tool_manager import ToolManager
 
 
 def _make(tmp_path):
@@ -11,10 +12,11 @@ def _make(tmp_path):
 
 
 def test_parse_tool_type_is_defensive() -> None:
-    assert _parse_tool_type("pen") is ToolType.PEN
-    assert _parse_tool_type(" Circle ") is ToolType.CIRCLE
-    assert _parse_tool_type("laser") is ToolType.PEN
-    assert _parse_tool_type(None) is ToolType.PEN
+    assert parse_tool_type("pen") is ToolType.PEN
+    assert parse_tool_type(" Circle ") is ToolType.CIRCLE
+    assert parse_tool_type(ToolType.RECT) is ToolType.RECT
+    assert parse_tool_type("laser") is None
+    assert parse_tool_type(None) is None
 
 
 def test_configs_are_derived_live_from_settings(tmp_path) -> None:

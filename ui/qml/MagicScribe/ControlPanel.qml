@@ -56,35 +56,6 @@ ApplicationWindow {
            | Qt.WindowStaysOnTopHint
            | Qt.Tool
 
-    function syncLayerShellInputRegion() {
-        if (!root.visible)
-            return
-        root.shellAdapter.set_control_input_region(
-                    toolbarHost.x,
-                    toolbarHost.y,
-                    toolbarHost.width,
-                    toolbarHost.height)
-    }
-
-    function clampToolbarHost() {
-        toolbarHost.x = Math.max(
-                    0,
-                    Math.min(root.width - toolbarHost.width, toolbarHost.x))
-        toolbarHost.y = Math.max(
-                    0,
-                    Math.min(root.height - toolbarHost.height, toolbarHost.y))
-    }
-
-    onVisibleChanged: syncLayerShellInputRegion()
-    onWidthChanged: {
-        clampToolbarHost()
-        syncLayerShellInputRegion()
-    }
-    onHeightChanged: {
-        clampToolbarHost()
-        syncLayerShellInputRegion()
-    }
-
     onClosing: function(close) {
         close.accepted = false
         root.shellAdapter.quit_application()
@@ -131,17 +102,19 @@ ApplicationWindow {
         onActivated: root.shellAdapter.quit_application()
     }
 
-    Item {
+    SurfaceHost {
         id: toolbarHost
+        objectName: "toolbarHost"
+        surface: root
         x: 20
         y: 20
         width: root.panelWidth
         height: root.panelHeight
 
-        onXChanged: root.syncLayerShellInputRegion()
-        onYChanged: root.syncLayerShellInputRegion()
-        onWidthChanged: root.syncLayerShellInputRegion()
-        onHeightChanged: root.syncLayerShellInputRegion()
+        onInputRegionRequested: (regionX, regionY, regionWidth, regionHeight) => {
+            root.shellAdapter.set_control_input_region(
+                        regionX, regionY, regionWidth, regionHeight)
+        }
 
         // Deliberately flat outer shell: desktop-floating chrome must not cast
         // highlight/shadow halos onto whatever is underneath it.

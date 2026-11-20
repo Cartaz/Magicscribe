@@ -19,7 +19,6 @@ from jeepney import (
     DBusAddress,
     HeaderFields,
     MatchRule,
-    MessageType,
     message_bus,
     new_method_call,
 )
@@ -27,12 +26,15 @@ from jeepney.io.blocking import open_dbus_connection
 
 from config.constants import HotkeyDefaults
 from core.app_controller import AppController
-from ui.native.portal_registry import register_host_app
+from ui.native.portal_registry import (
+    PORTAL_PATH as _PORTAL_PATH,
+    PORTAL_SERVICE as _PORTAL_SERVICE,
+    dbus_error_message,
+    register_host_app,
+)
 
 logger = logging.getLogger(__name__)
 
-_PORTAL_SERVICE = "org.freedesktop.portal.Desktop"
-_PORTAL_PATH = "/org/freedesktop/portal/desktop"
 _GLOBAL_SHORTCUTS_IFACE = "org.freedesktop.portal.GlobalShortcuts"
 _REQUEST_IFACE = "org.freedesktop.portal.Request"
 _SESSION_IFACE = "org.freedesktop.portal.Session"
@@ -150,11 +152,9 @@ def _message_path(message) -> str:
 
 
 def _reply_body(reply, method_name: str) -> tuple[Any, ...]:
-    if reply.header.message_type == MessageType.error:
-        error_name = reply.header.fields.get(HeaderFields.error_name, "D-Bus error")
-        details = ": ".join(str(part) for part in reply.body if part)
-        suffix = f": {details}" if details else ""
-        raise RuntimeError(f"{method_name} fallita: {error_name}{suffix}")
+    error = dbus_error_message(reply)
+    if error is not None:
+        raise RuntimeError(f"{method_name} fallita: {error}")
     return reply.body
 
 

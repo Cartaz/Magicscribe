@@ -11,16 +11,18 @@ from typing import Any
 
 from jeepney import DBusAddress, HeaderFields, MessageType, new_method_call
 
+from config.constants import AppMeta
+
 logger = logging.getLogger(__name__)
 
-_PORTAL_SERVICE = "org.freedesktop.portal.Desktop"
-_PORTAL_PATH = "/org/freedesktop/portal/desktop"
+PORTAL_SERVICE = "org.freedesktop.portal.Desktop"
+PORTAL_PATH = "/org/freedesktop/portal/desktop"
 _REGISTRY_IFACE = "org.freedesktop.host.portal.Registry"
-APP_ID = "magicscribe"
+APP_ID = AppMeta.ORG_NAME  # deve coincidere con il nome del file .desktop
 
 _REGISTRY_ADDRESS = DBusAddress(
-    _PORTAL_PATH,
-    bus_name=_PORTAL_SERVICE,
+    PORTAL_PATH,
+    bus_name=PORTAL_SERVICE,
     interface=_REGISTRY_IFACE,
 )
 
@@ -35,8 +37,13 @@ def register_message(app_id: str = APP_ID):
     )
 
 
-def _error_name(reply: Any) -> str:
-    return str(reply.header.fields.get(HeaderFields.error_name, ""))
+def dbus_error_message(reply: Any) -> str | None:
+    """Descrive una reply D-Bus di errore, oppure None se non e' un errore."""
+    if reply.header.message_type != MessageType.error:
+        return None
+    error_name = reply.header.fields.get(HeaderFields.error_name, "D-Bus error")
+    details = ": ".join(str(part) for part in reply.body if part)
+    return f"{error_name}: {details}" if details else str(error_name)
 
 
 def register_host_app(connection: Any, *, timeout: float) -> bool:
@@ -54,14 +61,9 @@ def register_host_app(connection: Any, *, timeout: float) -> bool:
         logger.debug("XDG host Registry non disponibile: %s", exc)
         return False
 
-    if reply.header.message_type == MessageType.error:
-        details = ": ".join(str(part) for part in reply.body if part)
-        suffix = f": {details}" if details else ""
-        logger.debug(
-            "XDG host Registry non applicata: %s%s",
-            _error_name(reply) or "D-Bus error",
-            suffix,
-        )
+    error = dbus_error_message(reply)
+    if error is not None:
+        logger.debug("XDG host Registry non applicata: %s", error)
         return False
 
     logger.info("Peer portal registrato con app-id %s", APP_ID)
