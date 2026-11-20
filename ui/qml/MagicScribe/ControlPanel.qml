@@ -20,7 +20,9 @@ ApplicationWindow {
         "#ff0000", "#ff8800", "#ffcc00", "#27ae60",
         "#00bfa5", "#e040fb", "#ffffff", "#6b7076"
     ]
-    readonly property real preferredHeight: 700
+    // Altezza esatta del contenuto: toolbarSurface (margini 12) + viewport
+    // (margini 4) + padding verticale della colonna (10 + 10).
+    readonly property real preferredHeight: toolbarColumn.implicitHeight + 52
     readonly property real panelWidth: 104
     readonly property real currentScreenWidth: Screen.width > 0
                                                ? Screen.width
@@ -127,18 +129,17 @@ ApplicationWindow {
 
             Flickable {
                 id: toolbarViewport
+                objectName: "toolbarViewport"
                 anchors.fill: parent
                 anchors.margins: 4
                 contentWidth: width
                 contentHeight: toolbarColumn.implicitHeight + 20
+                // Nessuna scrollbar: il pannello e' alto quanto il contenuto.
+                // Solo su schermi piu' bassi della toolbar resta lo scorrimento.
                 clip: contentHeight > height
+                interactive: contentHeight > height
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.VerticalFlick
-
-                ScrollBar.vertical: ScrollBar {
-                    policy: toolbarViewport.contentHeight > toolbarViewport.height
-                            ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
-                }
 
                 Column {
                     id: toolbarColumn
@@ -158,24 +159,43 @@ ApplicationWindow {
                         padding: 0
                         Accessible.name: "Riduci MagicScribe"
 
-                        background: RaisedSurface {
-                            radius: 24
+                        // Stesso alone e bordo di uno strumento selezionato.
+                        background: Item {
+                            AccentGlow {
+                                anchors.fill: logoSurface
+                                radius: logoSurface.radius
+                            }
+
+                            Rectangle {
+                                id: logoSurface
+                                anchors.fill: parent
+                                radius: width / 2
+                                color: Theme.surface
+                            }
 
                             Rectangle {
                                 anchors.fill: parent
-                                radius: 24
+                                radius: width / 2
                                 color: "transparent"
-                                border.width: logoButton.activeFocus || logoButton.pressed ? 1 : 0
+                                border.width: 1
                                 border.color: Theme.accent
+                                opacity: logoButton.hovered || logoButton.pressed
+                                         || logoButton.activeFocus
+                                         ? 1.0 : Theme.accentBorderOpacity
                             }
                         }
 
-                        contentItem: Image {
-                            source: "../../../assets/icons/magicscribe.svg"
-                            sourceSize.width: 30
-                            sourceSize.height: 30
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
+                        contentItem: Item {
+                            Image {
+                                anchors.centerIn: parent
+                                width: 30
+                                height: 30
+                                source: "../../../assets/icons/toolbar/logo.svg"
+                                sourceSize.width: 30
+                                sourceSize.height: 30
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                            }
                         }
 
                         onClicked: root.shellAdapter.minimize_to_floating()

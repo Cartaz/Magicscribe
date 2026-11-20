@@ -10,6 +10,7 @@ QtObject {
     readonly property color shadowDarkSoft: Qt.rgba(0.0, 0.0, 0.0, 0.46)
     readonly property color shadowLightSoft: Qt.rgba(1.0, 1.0, 1.0, 0.075)
     readonly property color accentGlow: Qt.rgba(1.0, 0.4, 0.0, 0.28)
+    readonly property real accentBorderOpacity: 0.58
 
     readonly property string fontFamily: "Noto Sans"
 

@@ -22,3 +22,16 @@ def test_canonical_svg_icon_renders_with_transparent_outer_background() -> None:
     assert not image.isNull()
     assert image.pixelColor(0, 0).alpha() == 0
     assert image.pixelColor(64, 64).alpha() > 0
+
+
+def test_toolbar_logo_is_a_filter_free_mark_without_its_own_ring() -> None:
+    # Drawn for 22-30 px: SVG filters and the app icon's thin orange ring
+    # blur at that size; the button draws the ring and halo instead.
+    logo = ICON_PATH.parent / "toolbar" / "logo.svg"
+    source = logo.read_text(encoding="utf-8")
+    assert "<filter" not in source
+    assert "<circle" not in source
+
+    image = QIcon(str(logo)).pixmap(30, 30).toImage()
+    assert image.pixelColor(0, 29).alpha() == 0
+    assert image.pixelColor(15, 15).alpha() > 0
