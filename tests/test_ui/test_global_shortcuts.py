@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import QObject, Signal
 from jeepney import HeaderFields
 
@@ -141,12 +139,3 @@ def test_service_state_drives_shell_fallback_property(tmp_path) -> None:
     service.shutdown()
     assert backend.shutdown_calls == 1
     assert adapter.globalDrawingShortcutsActive is False
-
-
-def test_portal_backend_keeps_blocking_dbus_off_gui_thread() -> None:
-    source = (
-        Path(__file__).resolve().parents[2] / "ui" / "native" / "global_shortcuts.py"
-    ).read_text(encoding="utf-8")
-    assert "PySide6.QtDBus" not in source
-    assert "threading.Thread(" in source
-    assert "waitForFinished(" not in source

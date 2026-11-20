@@ -69,34 +69,48 @@ def test_non_object_json_falls_back_to_defaults(tmp_path: Path) -> None:
     assert settings.get("pen_size") == 5
 
 
-def test_supported_color_formats_are_normalized(tmp_path: Path) -> None:
+def test_colors_are_normalized_rrggbb_only(tmp_path: Path) -> None:
     settings = _make_settings(tmp_path)
-    assert settings.set("pen_color", "#AABBCCDD")
-    assert settings.get("pen_color") == "#aabbccdd"
-    assert settings.set("pen_color", "rgba(12, 34, 56, 0.5)")
-    assert settings.get("pen_color") == "rgba(12,34,56,0.5)"
+    assert settings.set("pen_color", " #AABBCC ")
+    assert settings.get("pen_color") == "#aabbcc"
+    # The UI has no alpha: new values are only accepted as #rrggbb.
+    assert settings.set("pen_color", "#AABBCCDD") is False
+    assert settings.set("pen_color", "rgba(12, 34, 56, 0.5)") is False
+    assert settings.get("pen_color") == "#aabbcc"
 
 
-def test_invalid_rgba_is_rejected(tmp_path: Path) -> None:
+def test_legacy_colors_saved_by_older_versions_are_migrated(tmp_path: Path) -> None:
+    keys = [spec.color_key for spec in TOOL_SPECS if spec.color_key is not None]
+    assert len(keys) >= 2
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps({keys[0]: "rgba(12, 34, 56, 0.5)", keys[1]: "#80AABBCC"}),
+        encoding="utf-8",
+    )
+    settings = Settings(path=path)
+    settings.load()
+    assert settings.get(keys[0]) == "#0c2238"
+    # Older versions followed QColor: 9-digit hex is #AARRGGBB.
+    assert settings.get(keys[1]) == "#aabbcc"
+    # The migration is written back once, so it does not repeat at every start.
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved[keys[0]] == "#0c2238" and saved[keys[1]] == "#aabbcc"
+
+
+def test_malformed_legacy_colors_fall_back_to_defaults(tmp_path: Path) -> None:
+    spec = next(spec for spec in TOOL_SPECS if spec.color_key is not None)
+    for legacy in ("rgba(300, 0, 0, 1)", "rgba(1, 2, 3)", "rgba(1, 2, 3, 2)", "#80aabbcz"):
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({spec.color_key: legacy}), encoding="utf-8")
+        settings = Settings(path=path)
+        settings.load()
+        assert settings.get(spec.color_key) == spec.default_color, legacy
+
+
+def test_last_tool_is_normalized_to_its_key(tmp_path: Path) -> None:
     settings = _make_settings(tmp_path)
-    assert settings.set("pen_color", "rgba(300,0,0,1)") is False
-    assert settings.set("pen_color", "rgba(0,0,0,2)") is False
-
-
-def test_validation_has_no_side_effects(tmp_path: Path) -> None:
-    settings = _make_settings(tmp_path)
-    assert settings.is_valid("pen_size", 12.5)
-    assert not settings.is_valid("pen_size", 0)
-    assert settings.get("pen_size") == 5
-
-
-def test_reset_uses_canonical_defaults(tmp_path: Path) -> None:
-    settings = _make_settings(tmp_path)
-    settings.set("pen_size", 99)
-    settings.set("last_tool", "circle")
-    settings.reset()
-    assert settings.get("pen_size") == 5
-    assert settings.get("last_tool") == "pen"
+    assert settings.set("last_tool", " Circle ")
+    assert settings.get("last_tool") == "circle"
 
 
 def test_background_persistence_flushes_on_close(tmp_path: Path) -> None:

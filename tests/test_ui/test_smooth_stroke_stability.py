@@ -10,6 +10,10 @@ from core.models import Point
 from ui.drawing_engine import DrawingEngine
 
 
+def _smooth_path(points: list[Point]):
+    return DrawingEngine._smooth_path_from_filtered(DrawingEngine._smooth_points(points))
+
+
 def _elements(path):
     return [
         (path.elementAt(index).x, path.elementAt(index).y)
@@ -46,8 +50,8 @@ def test_smooth_path_prefix_is_stable_when_points_are_appended() -> None:
     base = _dense_polyline(vertices[:4])
     extended = base[:-1] + _dense_polyline(vertices[3:])
 
-    before = _elements(DrawingEngine._smooth_path(base))
-    after = _elements(DrawingEngine._smooth_path(extended))
+    before = _elements(_smooth_path(base))
+    after = _elements(_smooth_path(extended))
 
     assert before
     assert len(after) > len(before)
@@ -94,7 +98,7 @@ def test_smooth_path_rounds_a_deliberate_corner() -> None:
         step=2.0,
     )
 
-    path = DrawingEngine._smooth_path(points)
+    path = _smooth_path(points)
 
     # The rendered path must use cubic curve elements, not a raw polyline.
     assert path.elementCount() > 4
@@ -112,7 +116,7 @@ def test_dense_mouse_zigzag_becomes_visibly_sinuous() -> None:
     ]
     points = _dense_polyline(vertices, step=2.0)
 
-    path = DrawingEngine._smooth_path(points)
+    path = _smooth_path(points)
     bounds = path.boundingRect()
     controls = DrawingEngine._smooth_points(points)
 

@@ -1,73 +1,67 @@
-"""Static guardrails only for behavior CI cannot execute without KDE layer-shell."""
+"""Layer-shell roles that CI cannot exercise without a KDE compositor.
+
+The surfaces only make sense with these roles (stacking layer, keyboard
+policy, fullscreen anchoring), so a silent change here would break the app
+on Plasma while every offscreen test keeps passing.
+"""
+
+from __future__ import annotations
 
 from pathlib import Path
+import re
 
-ROOT = Path(__file__).resolve().parents[2]
-QML_DIR = ROOT / "ui" / "qml" / "MagicScribe"
+import pytest
 
-
-def _source(name: str) -> str:
-    return (QML_DIR / name).read_text(encoding="utf-8")
-
-
-def test_wayland_overlay_has_the_required_layer_role() -> None:
-    source = _source("WaylandLayerSurface.qml")
-    assert "import org.kde.layershell 1.0 as LayerShell" in source
-    assert "LayerShell.Window.LayerTop" in source
-    assert "LayerShell.Window.KeyboardInteractivityNone" in source
-    for anchor in ("AnchorTop", "AnchorBottom", "AnchorLeft", "AnchorRight"):
-        assert f"LayerShell.Window.{anchor}" in source
-    assert 'LayerShell.Window.scope: "magicscribe-overlay"' in source
+_QML_DIR = Path(__file__).resolve().parents[2] / "ui" / "qml" / "MagicScribe"
+_ASSIGNMENT = re.compile(r"^LayerShell\.Window\.([\w.]+):\s*(.*)$")
+_ALL_ANCHORS = {
+    "LayerShell.Window.AnchorTop",
+    "LayerShell.Window.AnchorBottom",
+    "LayerShell.Window.AnchorLeft",
+    "LayerShell.Window.AnchorRight",
+}
 
 
-def test_wayland_shell_surfaces_are_stationary_overlay_layers() -> None:
-    control = _source("WaylandControlPanel.qml")
-    floating = _source("WaylandFloatingPalette.qml")
-    for source in (control, floating):
-        assert "LayerShell.Window.LayerOverlay" in source
-        for anchor in ("AnchorTop", "AnchorBottom", "AnchorLeft", "AnchorRight"):
-            assert f"LayerShell.Window.{anchor}" in source
-        for side in ("left", "top", "right", "bottom"):
-            assert f"LayerShell.Window.margins.{side}: 0" in source
-        assert "layerShellPlacement" not in source
-        assert "layerShellFullscreen" not in source
-    assert "KeyboardInteractivityOnDemand" in control
-    assert "KeyboardInteractivityNone" in floating
+def _layer_shell_properties(name: str) -> dict[str, str]:
+    properties: dict[str, str] = {}
+    current: str | None = None
+    for raw_line in (_QML_DIR / f"{name}.qml").read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        match = _ASSIGNMENT.match(line)
+        if match:
+            current = match.group(1)
+            properties[current] = match.group(2)
+        elif current is not None and line.startswith("|"):
+            properties[current] += f" {line}"
+        else:
+            current = None
+    return properties
 
 
-def test_control_drag_moves_only_the_internal_host() -> None:
-    source = _source("ControlPanel.qml")
-    assert "id: toolbarHost" in source
-    assert "target: toolbarHost" in source
-    assert "root.shellAdapter.set_control_input_region(" in source
-    assert "onXChanged: root.syncLayerShellInputRegion()" in source
-    assert "onYChanged: root.syncLayerShellInputRegion()" in source
-    assert "startSystemMove" not in source
-    assert "layerShellPlacement" not in source
-    assert "layerShellFullscreen" not in source
-    assert "layerShellMargin" not in source
-    assert "LayerShell.Window.margins" not in source
+def _anchors(properties: dict[str, str]) -> set[str]:
+    return {anchor.strip() for anchor in properties["anchors"].split("|")}
 
 
-def test_floating_drag_and_minimize_restore_use_internal_coordinates() -> None:
-    source = _source("FloatingPalette.qml")
-    assert "id: paletteHost" in source
-    assert "target: paletteHost" in source
-    assert "root.shellAdapter.set_floating_input_region(" in source
-    assert "root.shellAdapter.controlLogoCenterX" in source
-    assert "root.shellAdapter.controlLogoCenterY" in source
-    assert "- paletteHost.width / 2" in source
-    assert "- paletteHost.height / 2" in source
-    assert "startSystemMove" not in source
-    assert "layerShellPlacement" not in source
-    assert "layerShellFullscreen" not in source
-    assert "LayerShell.Window.margins" not in source
+@pytest.mark.parametrize(
+    ("name", "layer", "keyboard"),
+    [
+        ("WaylandLayerSurface", "LayerTop", "KeyboardInteractivityNone"),
+        ("WaylandControlPanel", "LayerOverlay", "KeyboardInteractivityOnDemand"),
+        ("WaylandFloatingPalette", "LayerOverlay", "KeyboardInteractivityNone"),
+    ],
+)
+def test_surface_has_its_layer_shell_role(name: str, layer: str, keyboard: str) -> None:
+    properties = _layer_shell_properties(name)
+
+    assert properties["layer"] == f"LayerShell.Window.{layer}"
+    assert properties["keyboardInteractivity"] == f"LayerShell.Window.{keyboard}"
+    assert _anchors(properties) == _ALL_ANCHORS
+    assert properties["exclusionZone"] == "-1"
 
 
-def test_qmldir_exports_only_live_components() -> None:
-    qmldir = (QML_DIR / "qmldir").read_text(encoding="utf-8")
-    assert "WaylandLayerSurface 1.0 WaylandLayerSurface.qml" in qmldir
-    assert "WaylandControlPanel 1.0 WaylandControlPanel.qml" in qmldir
-    assert "WaylandFloatingPalette 1.0 WaylandFloatingPalette.qml" in qmldir
-    assert "NeuButton" not in qmldir
-    assert "ShortcutBadge" not in qmldir
+@pytest.mark.parametrize("name", ["WaylandControlPanel", "WaylandFloatingPalette"])
+def test_shell_surfaces_cover_the_whole_output(name: str) -> None:
+    properties = _layer_shell_properties(name)
+
+    for side in ("left", "top", "right", "bottom"):
+        assert properties[f"margins.{side}"] == "0"

@@ -32,59 +32,31 @@ Window {
            | Qt.Tool
            | Qt.WindowDoesNotAcceptFocus
 
-    function syncLayerShellInputRegion() {
+    onVisibleChanged: {
         if (!root.visible)
             return
-        root.shellAdapter.set_floating_input_region(
-                    paletteHost.x,
-                    paletteHost.y,
-                    paletteHost.width,
-                    paletteHost.height)
+        // Collasso 1:1: il centro della palette ridotta coincide esattamente
+        // con il centro del logo premuto nella toolbar. Al restore il verso
+        // opposto sposta toolbarHost affinché il logo riappaia sul centro
+        // corrente della floating icon.
+        paletteHost.x = root.shellAdapter.controlLogoCenterX - paletteHost.width / 2
+        paletteHost.y = root.shellAdapter.controlLogoCenterY - paletteHost.height / 2
+        paletteHost.clampToSurface()
     }
 
-    function clampPaletteHost() {
-        paletteHost.x = Math.max(
-                    0,
-                    Math.min(root.width - paletteHost.width, paletteHost.x))
-        paletteHost.y = Math.max(
-                    0,
-                    Math.min(root.height - paletteHost.height, paletteHost.y))
-    }
-
-    onVisibleChanged: {
-        if (root.visible) {
-            // Collasso 1:1: il centro della palette ridotta coincide esattamente
-            // con il centro del logo premuto nella toolbar. Al restore il verso
-            // opposto sposta toolbarHost affinché il logo riappaia sul centro
-            // corrente della floating icon.
-            paletteHost.x = root.shellAdapter.controlLogoCenterX
-                            - paletteHost.width / 2
-            paletteHost.y = root.shellAdapter.controlLogoCenterY
-                            - paletteHost.height / 2
-        }
-        clampPaletteHost()
-        syncLayerShellInputRegion()
-    }
-    onWidthChanged: {
-        clampPaletteHost()
-        syncLayerShellInputRegion()
-    }
-    onHeightChanged: {
-        clampPaletteHost()
-        syncLayerShellInputRegion()
-    }
-
-    Item {
+    SurfaceHost {
         id: paletteHost
+        objectName: "paletteHost"
+        surface: root
         x: 20
         y: 20
         width: root.paletteWidth
         height: root.paletteHeight
 
-        onXChanged: root.syncLayerShellInputRegion()
-        onYChanged: root.syncLayerShellInputRegion()
-        onWidthChanged: root.syncLayerShellInputRegion()
-        onHeightChanged: root.syncLayerShellInputRegion()
+        onInputRegionRequested: (regionX, regionY, regionWidth, regionHeight) => {
+            root.shellAdapter.set_floating_input_region(
+                        regionX, regionY, regionWidth, regionHeight)
+        }
 
         RaisedSurface {
             id: paletteSurface

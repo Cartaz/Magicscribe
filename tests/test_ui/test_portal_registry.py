@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from jeepney import HeaderFields, MessageType
 
-from jeepney import HeaderFields
-
-from ui.native.portal_registry import APP_ID, register_message
+from ui.native.portal_registry import APP_ID, dbus_error_message, register_message
 
 
 def test_registry_message_serializes_magicscribe_app_id() -> None:
@@ -17,15 +15,22 @@ def test_registry_message_serializes_magicscribe_app_id() -> None:
     assert message.serialise(serial=1)
 
 
-def test_registry_runs_before_global_shortcuts_portal_calls() -> None:
-    source = (
-        Path(__file__).resolve().parents[2]
-        / "ui"
-        / "native"
-        / "global_shortcuts.py"
-    ).read_text(encoding="utf-8")
-    registry_call = source.index(
-        "register_host_app(connection, timeout=_METHOD_REPLY_TIMEOUT)"
+def test_dbus_error_message_formats_only_error_replies() -> None:
+    class _Header:
+        def __init__(self, message_type, fields) -> None:
+            self.message_type = message_type
+            self.fields = fields
+
+    class _Reply:
+        def __init__(self, message_type, fields, body) -> None:
+            self.header = _Header(message_type, fields)
+            self.body = body
+
+    error = _Reply(
+        MessageType.error,
+        {HeaderFields.error_name: "org.freedesktop.DBus.Error.AccessDenied"},
+        ("denied",),
     )
-    create_call = source.index("self._create_and_bind_session(connection, responses)")
-    assert registry_call < create_call
+    assert dbus_error_message(error) == "org.freedesktop.DBus.Error.AccessDenied: denied"
+    assert dbus_error_message(_Reply(MessageType.error, {}, ())) == "D-Bus error"
+    assert dbus_error_message(_Reply(MessageType.method_return, {}, ("ok",))) is None

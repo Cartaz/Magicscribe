@@ -103,11 +103,11 @@ class AppController:
             self._notify(self._history_listeners)
 
     def undo(self) -> None:
-        if self._strokes.undo() is not None:
+        if self._strokes.undo():
             self._notify(self._history_listeners)
 
     def redo(self) -> None:
-        if self._strokes.redo() is not None:
+        if self._strokes.redo():
             self._notify(self._history_listeners)
 
     def is_drawing_active(self) -> bool:

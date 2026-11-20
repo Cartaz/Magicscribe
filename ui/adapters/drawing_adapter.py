@@ -14,7 +14,6 @@ class DrawingAdapter(QObject):
     activeChanged = Signal()
     annotationsVisibleChanged = Signal()
     historyChanged = Signal()
-    repaintRequested = Signal()
 
     def __init__(self, controller: AppController, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -76,8 +75,6 @@ class DrawingAdapter(QObject):
 
     def _on_visibility_changed(self) -> None:
         self.annotationsVisibleChanged.emit()
-        self.repaintRequested.emit()
 
     def _on_history_changed(self) -> None:
         self.historyChanged.emit()
-        self.repaintRequested.emit()

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional
 
 
 class ToolType(Enum):
@@ -39,7 +38,7 @@ class ToolSpec:
 
     @property
     def size_key(self) -> str:
-        return "eraser_size" if self.tool_type is ToolType.ERASER else f"{self.key}_size"
+        return f"{self.key}_size"
 
     @property
     def color_key(self) -> str | None:
@@ -55,6 +54,16 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     ToolSpec(ToolType.SMOOTH, 5, "#ff0000"),
 )
 TOOL_SPEC_BY_TYPE = {spec.tool_type: spec for spec in TOOL_SPECS}
+_TOOL_BY_KEY = {spec.key: spec.tool_type for spec in TOOL_SPECS}
+
+
+def parse_tool_type(value: object) -> ToolType | None:
+    """Converte un id strumento (es. ``"pen"``, ``" Circle "``) nel suo ToolType."""
+    if isinstance(value, ToolType):
+        return value
+    if not isinstance(value, str):
+        return None
+    return _TOOL_BY_KEY.get(value.strip().lower())
 
 
 @dataclass(frozen=True)
@@ -74,14 +83,6 @@ class Stroke:
 
     def is_shape(self) -> bool:
         return self.tool_type in (ToolType.LINE, ToolType.RECT, ToolType.CIRCLE)
-
-    @property
-    def start_point(self) -> Optional[Point]:
-        return self.points[0] if self.points else None
-
-    @property
-    def end_point(self) -> Optional[Point]:
-        return self.points[-1] if self.points else None
 
 
 @dataclass(frozen=True)

@@ -14,17 +14,11 @@ def _xdg_state_home() -> Path:
     return Path(os.getenv("XDG_STATE_HOME", Path.home() / ".local" / "state"))
 
 
-def _xdg_data_home() -> Path:
-    return Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-
-
 class AppMeta:
     NAME: str = "MagicScribe"
     DISPLAY_NAME: str = "MagicScribe"
-    DESCRIPTION: str = "Annotazioni sullo schermo — standalone"
     VERSION: str = "2.0.0"
     ORG_NAME: str = "magicscribe"
-    DOMAIN: str = "org.magicscribe"
 
 
 class PathDefaults:
@@ -32,7 +26,6 @@ class PathDefaults:
     SETTINGS_FILE: Path = CONFIG_DIR / "settings.json"
     LOG_DIR: Path = _xdg_state_home() / AppMeta.ORG_NAME
     LOG_FILE: Path = LOG_DIR / "magicscribe.log"
-    DESKTOP_FILE: Path = _xdg_data_home() / "applications" / f"{AppMeta.ORG_NAME}.desktop"
 
 
 class HotkeyDefaults:

@@ -2,22 +2,17 @@
 
 from __future__ import annotations
 
-import os
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QImage, QPainter
-from PySide6.QtQuick import QQuickWindow
 from PySide6.QtWidgets import QApplication
 
 from config.settings import Settings
 from core.app_controller import AppController
 from ui.adapters.drawing_adapter import DrawingAdapter
 from ui.adapters.tool_adapter import ToolAdapter
+from ui.drawing_engine import DrawingEngine
 from ui.quick.drawing_canvas import DrawingCanvas
 from ui.quick.overlay_surface import OverlaySurface
-import ui.quick.overlay_surface as overlay_surface_module
 
 _APP = QApplication.instance() or QApplication([])
 
@@ -38,49 +33,67 @@ def _close(surface, settings, drawing_adapter, tool_adapter) -> None:
     _APP.processEvents()
 
 
-def test_overlay_surface_toggles_native_input_transparency(tmp_path) -> None:
+def test_overlay_surface_toggles_native_input_transparency(
+    tmp_path, overlay_window_component
+) -> None:
     settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
-    surface = OverlaySurface(drawing_adapter, tool_adapter)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
     surface.show()
     _APP.processEvents()
     try:
-        assert surface.window.flags() & Qt.WindowType.WindowTransparentForInput
+        assert surface.windows[0].flags() & Qt.WindowType.WindowTransparentForInput
         drawing_adapter.toggle_drawing()
         _APP.processEvents()
         assert controller.is_drawing_active()
-        assert not (surface.window.flags() & Qt.WindowType.WindowTransparentForInput)
+        assert not (surface.windows[0].flags() & Qt.WindowType.WindowTransparentForInput)
         drawing_adapter.toggle_drawing()
         _APP.processEvents()
-        assert surface.window.flags() & Qt.WindowType.WindowTransparentForInput
+        assert surface.windows[0].flags() & Qt.WindowType.WindowTransparentForInput
     finally:
         _close(surface, settings, drawing_adapter, tool_adapter)
 
 
-def test_native_wayland_builds_one_overlay_per_screen(tmp_path, monkeypatch) -> None:
+def test_overlay_builds_one_layer_surface_per_screen(
+    tmp_path, overlay_window_component
+) -> None:
     settings, _controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
-    monkeypatch.setattr(overlay_surface_module, "_platform_name", lambda: "wayland")
-
-    class _FakeLayerShellComponent:
-        @staticmethod
-        def create():
-            return QQuickWindow()
-
-        @staticmethod
-        def errors():
-            return []
-
-    def _fake_prepare(surface: OverlaySurface) -> None:
-        surface._wayland_component = _FakeLayerShellComponent()
-
-    monkeypatch.setattr(OverlaySurface, "_prepare_wayland_component", _fake_prepare)
-    surface = OverlaySurface(drawing_adapter, tool_adapter)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
     try:
         screens = list(_APP.screens())
         assert screens
+        assert list(surface.windows) == overlay_window_component.created
         assert len(surface.windows) == len(screens)
         for view in surface._views:
+            assert view.window.screen() is view.screen
             geometry = view.screen.geometry()
             assert view.canvas.global_origin() == QPointF(geometry.x(), geometry.y())
+    finally:
+        _close(surface, settings, drawing_adapter, tool_adapter)
+
+
+def test_screen_topology_change_rebuilds_visible_surfaces(
+    tmp_path, overlay_window_component
+) -> None:
+    settings, _controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
+    surface.show()
+    try:
+        before = surface.windows
+        surface._on_screen_topology_changed()
+        _APP.processEvents()
+        after = surface.windows
+        assert len(after) == len(_APP.screens())
+        assert not set(before) & set(after)
+        assert all(window.isVisible() for window in after)
+        assert all(
+            window.flags() & Qt.WindowType.WindowTransparentForInput for window in after
+        )
     finally:
         _close(surface, settings, drawing_adapter, tool_adapter)
 
@@ -145,3 +158,174 @@ def test_shape_preview_keeps_two_endpoints(tmp_path) -> None:
     tool_adapter.close()
     settings.close()
     _APP.processEvents()
+
+
+def _paint(canvas: DrawingCanvas, size: int = 64) -> QImage:
+    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    try:
+        canvas.paint(painter)
+    finally:
+        painter.end()
+    return image
+
+
+def test_live_frames_reuse_the_committed_strokes_layer(tmp_path, monkeypatch) -> None:
+    settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    canvas = DrawingCanvas(drawing_adapter)
+    canvas.setWidth(64)
+    canvas.setHeight(64)
+    drawing_adapter.toggle_drawing()
+    for y in (5, 10, 15):
+        canvas._begin_stroke(QPointF(5, y))
+        canvas._finish_stroke(QPointF(20, y))
+
+    history_renders: list[int] = []
+    original = DrawingEngine.render_strokes
+
+    def counting_render(painter, strokes):
+        history_renders.append(len(strokes))
+        original(painter, strokes)
+
+    monkeypatch.setattr(DrawingEngine, "render_strokes", staticmethod(counting_render))
+    try:
+        canvas._begin_stroke(QPointF(5, 40))
+        for x in range(6, 40):
+            canvas._extend_stroke(QPointF(x, 40))
+            image = _paint(canvas)
+        # Una sola rasterizzazione della cronologia per tutti i frame live.
+        assert history_renders == [3]
+        assert image.pixelColor(10, 5).alpha() > 0
+        assert image.pixelColor(30, 40).alpha() > 0
+
+        # Committing appends the new stroke to the layer without a rebuild.
+        canvas._finish_stroke(QPointF(40, 40))
+        image = _paint(canvas)
+        assert history_renders == [3, 1]
+        assert image.pixelColor(30, 40).alpha() > 0
+        assert image.pixelColor(10, 5).alpha() > 0
+
+        # Toggling visibility does not touch the history either.
+        drawing_adapter.toggle_visibility()
+        drawing_adapter.toggle_visibility()
+        _paint(canvas)
+        assert history_renders == [3, 1]
+
+        # Undo is not an append: the layer is rebuilt without the stroke.
+        drawing_adapter.undo()
+        image = _paint(canvas)
+        assert history_renders == [3, 1, 3]
+        assert image.pixelColor(30, 40).alpha() == 0
+        assert image.pixelColor(10, 15).alpha() > 0
+    finally:
+        canvas.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
+        settings.close()
+        _APP.processEvents()
+
+
+def test_history_changes_invalidate_the_committed_layer(tmp_path) -> None:
+    settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    canvas = DrawingCanvas(drawing_adapter)
+    canvas.setWidth(64)
+    canvas.setHeight(64)
+    drawing_adapter.toggle_drawing()
+    canvas._begin_stroke(QPointF(10, 10))
+    canvas._finish_stroke(QPointF(30, 10))
+    try:
+        assert _paint(canvas).pixelColor(20, 10).alpha() > 0
+        drawing_adapter.undo()
+        assert _paint(canvas).pixelColor(20, 10).alpha() == 0
+        drawing_adapter.redo()
+        assert _paint(canvas).pixelColor(20, 10).alpha() > 0
+        drawing_adapter.clear_screen()
+        assert _paint(canvas).pixelColor(20, 10).alpha() == 0
+    finally:
+        canvas.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
+        settings.close()
+        _APP.processEvents()
+
+
+def _reference(canvas: DrawingCanvas, strokes) -> QImage:
+    image = QImage(64, 64, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        DrawingEngine.render_strokes(painter, strokes)
+    finally:
+        painter.end()
+    return image
+
+
+def test_history_rebuilds_are_bounded_by_the_undo_reach(tmp_path, monkeypatch) -> None:
+    import ui.quick.drawing_canvas as drawing_canvas
+
+    reach = 2
+    monkeypatch.setattr(drawing_canvas, "_UNDO_REACH", reach)
+    settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    canvas = DrawingCanvas(drawing_adapter)
+    canvas.setWidth(64)
+    canvas.setHeight(64)
+    drawing_adapter.toggle_drawing()
+
+    rendered: list[int] = []
+    original = DrawingEngine.render_strokes
+
+    def counting_render(painter, strokes):
+        rendered.append(len(strokes))
+        original(painter, strokes)
+
+    monkeypatch.setattr(DrawingEngine, "render_strokes", staticmethod(counting_render))
+
+    def step(action) -> int:
+        rendered.clear()
+        action()
+        image = _paint(canvas)
+        total = sum(rendered)
+        assert image == _reference(canvas, drawing_adapter.strokes_snapshot())
+        return total
+
+    try:
+        for index in range(12):
+            y = 3 + 5 * index
+
+            def draw(y=y):
+                canvas._begin_stroke(QPointF(5, y))
+                canvas._finish_stroke(QPointF(60, y))
+
+            # The new stroke, plus occasionally freezing reach + 1 older ones.
+            assert step(draw) <= reach + 2
+        for action in (drawing_adapter.undo, drawing_adapter.undo, drawing_adapter.redo):
+            # Only the tail beyond the frozen base is redrawn, not all 12 strokes.
+            assert step(action) <= 2 * reach
+
+        assert step(drawing_adapter.clear_screen) == 0
+        assert canvas._committed_layer is None
+        assert step(drawing_adapter.undo) <= 2 * reach
+    finally:
+        canvas.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
+        settings.close()
+        _APP.processEvents()
+
+
+def test_empty_canvas_holds_no_layer(tmp_path) -> None:
+    settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    canvas = DrawingCanvas(drawing_adapter)
+    canvas.setWidth(64)
+    canvas.setHeight(64)
+    try:
+        _paint(canvas)
+        assert canvas._committed_layer is None
+    finally:
+        canvas.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
+        settings.close()
+        _APP.processEvents()

@@ -28,10 +28,6 @@ class SingleInstanceGuard:
         self._path = path or _default_lock_path()
         self._handle: TextIO | None = None
 
-    @property
-    def path(self) -> Path:
-        return self._path
-
     def acquire(self) -> bool:
         if self._handle is not None:
             return True

@@ -10,7 +10,7 @@ from threading import Lock
 from typing import Any
 
 from config.constants import PathDefaults
-from core.models import TOOL_SPECS
+from core.models import TOOL_SPECS, parse_tool_type
 
 logger = logging.getLogger(__name__)
 
@@ -27,38 +27,46 @@ _COLOR_KEYS = frozenset(
     spec.color_key for spec in TOOL_SPECS if spec.color_key is not None
 )
 _SIZE_KEYS = frozenset(spec.size_key for spec in TOOL_SPECS)
-_ALLOWED_TOOLS = frozenset(spec.key for spec in TOOL_SPECS)
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 
 
+def _is_hex(text: str) -> bool:
+    return bool(text) and all(ch in _HEX_DIGITS for ch in text)
+
+
 def _normalize_color(value: Any) -> tuple[bool, Any]:
+    """Accetta solo ``#rrggbb``, l'unico formato prodotto dalla UI."""
+    if isinstance(value, str):
+        candidate = value.strip()
+        if len(candidate) == 7 and candidate.startswith("#") and _is_hex(candidate[1:]):
+            return True, candidate.lower()
+    return False, value
+
+
+def _migrate_legacy_color(value: Any) -> str | None:
+    """Converte in ``#rrggbb`` i formati salvati dalle versioni 1.x.
+
+    Le versioni precedenti salvavano ``#aarrggbb`` (convenzione QColor) e
+    ``rgba(r,g,b,a)``; la UI attuale non gestisce l'alfa, quindi si conserva
+    solo il colore.
+    """
     if not isinstance(value, str):
-        return False, value
-
-    candidate = value.strip()
-    if (
-        candidate.startswith("#")
-        and len(candidate) in (7, 9)
-        and all(ch in _HEX_DIGITS for ch in candidate[1:])
-    ):
-        return True, candidate.lower()
-
+        return None
+    candidate = value.strip().lower()
+    if len(candidate) == 9 and candidate.startswith("#") and _is_hex(candidate[1:]):
+        return f"#{candidate[3:]}"
     if candidate.startswith("rgba(") and candidate.endswith(")"):
         parts = [part.strip() for part in candidate[5:-1].split(",")]
         if len(parts) != 4:
-            return False, value
+            return None
         try:
-            red, green, blue = (int(parts[index]) for index in range(3))
+            channels = [int(part) for part in parts[:3]]
             alpha = float(parts[3])
-        except (TypeError, ValueError):
-            return False, value
-        if not all(0 <= channel <= 255 for channel in (red, green, blue)):
-            return False, value
-        if not 0.0 <= alpha <= 1.0:
-            return False, value
-        return True, f"rgba({red},{green},{blue},{alpha:g})"
-
-    return False, value
+        except ValueError:
+            return None
+        if all(0 <= channel <= 255 for channel in channels) and 0.0 <= alpha <= 1.0:
+            return "#" + "".join(f"{channel:02x}" for channel in channels)
+    return None
 
 
 def _normalize_value(key: str, value: Any) -> tuple[bool, Any]:
@@ -78,11 +86,8 @@ def _normalize_value(key: str, value: Any) -> tuple[bool, Any]:
         return (True, value) if isinstance(value, bool) else (False, value)
 
     if key == "last_tool":
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in _ALLOWED_TOOLS:
-                return True, normalized
-        return False, value
+        tool = parse_tool_type(value) if isinstance(value, str) else None
+        return (True, tool.name.lower()) if tool is not None else (False, value)
 
     return False, value
 
@@ -118,30 +123,28 @@ class Settings:
             if not isinstance(saved, dict):
                 logger.warning("Configurazione ignorata: la radice JSON deve essere un oggetto")
                 return
+            migrated_any = False
             for key, value in saved.items():
                 if key not in _DEFAULTS:
                     logger.debug("Chiave impostazione obsoleta/sconosciuta: %s", key)
                     continue
                 valid, normalized = _normalize_value(key, value)
+                if not valid and key in _COLOR_KEYS:
+                    migrated = _migrate_legacy_color(value)
+                    if migrated is not None:
+                        logger.info("Colore legacy %r per '%s' migrato a %s", value, key, migrated)
+                        valid, normalized = True, migrated
+                        migrated_any = True
                 if valid:
                     self._data[key] = normalized
                 else:
                     logger.warning("Valore non valido per '%s': %r; uso il default", key, value)
             logger.info("Impostazioni caricate da %s", self._path)
+            if migrated_any:
+                # Riscrive il file una volta sola: il formato legacy non torna.
+                self._queue_save()
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Errore caricamento impostazioni: %s", exc)
-
-    def save(self) -> None:
-        if self._executor is not None:
-            self._queue_save()
-            self.flush()
-            return
-        self._write_snapshot(dict(self._data))
-
-    def flush(self) -> None:
-        executor = self._executor
-        if executor is not None:
-            executor.submit(lambda: None).result()
 
     def close(self) -> None:
         executor = self._executor
@@ -162,12 +165,6 @@ class Settings:
     def get(self, key: str) -> Any:
         return self._data.get(key, _DEFAULTS.get(key))
 
-    def is_valid(self, key: str, value: Any) -> bool:
-        if key not in _DEFAULTS:
-            return False
-        valid, _normalized = _normalize_value(key, value)
-        return valid
-
     def set(self, key: str, value: Any) -> bool:
         if self._closed:
             logger.warning("Settings gia' chiuso: mutazione ignorata per '%s'", key)
@@ -184,17 +181,6 @@ class Settings:
         self._data[key] = normalized
         self._queue_save()
         return True
-
-    def reset(self) -> None:
-        if self._closed:
-            logger.warning("Settings gia' chiuso: reset ignorato")
-            return
-        self._data = dict(_DEFAULTS)
-        self._queue_save()
-        logger.info("Impostazioni ripristinate ai default")
-
-    def all(self) -> dict[str, Any]:
-        return dict(self._data)
 
     def _queue_save(self) -> None:
         snapshot = dict(self._data)

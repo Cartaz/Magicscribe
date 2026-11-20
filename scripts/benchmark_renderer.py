@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Benchmark riproducibile del renderer QPainter di MagicScribe.
 
-Non impone una soglia CI: produce misure osservazionali utili a decidere se
-introdurre una cache dei tratti committed, evitando ottimizzazioni speculative.
+Non impone una soglia CI: produce misure osservazionali. I casi ``*_history``
+misurano la rasterizzazione completa della cronologia (fatta solo quando la
+cronologia cambia); ``live_frame_*`` misura un frame durante il disegno, che
+compone il layer in cache e il solo tratto in corso.
 """
 
 from __future__ import annotations
@@ -12,20 +14,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import statistics
 import sys
+import tempfile
 import time
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QPainter
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QCoreApplication, QEvent, QPointF, Qt
+from PySide6.QtGui import QGuiApplication, QImage, QPainter
+
+from config.settings import Settings
+from core.app_controller import AppController
 from core.models import Point, Stroke, ToolType
+from ui.adapters.drawing_adapter import DrawingAdapter
 from ui.drawing_engine import DrawingEngine
+from ui.quick.drawing_canvas import DrawingCanvas
 
 
 def _make_strokes(
@@ -91,6 +101,57 @@ def _measure_case(
     }
 
 
+def _measure_live_frame(
+    name: str,
+    history: list[Stroke],
+    repetitions: int,
+) -> dict[str, float | int | str]:
+    """Costo di un frame mentre si disegna sopra una cronologia gia' in cache."""
+    with tempfile.TemporaryDirectory() as tmp:
+        settings = Settings(path=Path(tmp) / "benchmark.json")
+        controller = AppController(settings)
+        for stroke in history:
+            controller.finalize_stroke(stroke)
+        adapter = DrawingAdapter(controller)
+        canvas = DrawingCanvas(adapter)
+        canvas.setWidth(1920)
+        canvas.setHeight(1080)
+        controller.toggle_drawing()
+
+        image = QImage(1920, 1080, QImage.Format.Format_ARGB32_Premultiplied)
+        canvas._begin_stroke(QPointF(100, 100))
+        for index in range(200):
+            canvas._extend_stroke(QPointF(100 + index * 3, 100 + (index % 40)))
+
+        timings_ms: list[float] = []
+        for frame in range(repetitions + 1):
+            image.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(image)
+            start = time.perf_counter()
+            try:
+                canvas.paint(painter)
+            finally:
+                painter.end()
+            if frame:  # il primo frame costruisce il layer in cache
+                timings_ms.append((time.perf_counter() - start) * 1000.0)
+
+        canvas.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        adapter.close()
+        settings.close()
+
+    return {
+        "name": name,
+        "strokes": len(history),
+        "points": sum(len(stroke.points) for stroke in history),
+        "repetitions": repetitions,
+        "mean_ms": round(statistics.fmean(timings_ms), 3),
+        "median_ms": round(statistics.median(timings_ms), 3),
+        "min_ms": round(min(timings_ms), 3),
+        "max_ms": round(max(timings_ms), 3),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -99,6 +160,7 @@ def main() -> None:
         help="Esegue il workload breve usato come osservazione in CI.",
     )
     args = parser.parse_args()
+    app = QGuiApplication.instance() or QGuiApplication([])
 
     if args.quick:
         repetitions = 3
@@ -112,8 +174,11 @@ def main() -> None:
     results = [
         _measure_case("pen_history", pen_strokes, repetitions),
         _measure_case("smooth_history", smooth_strokes, repetitions),
+        _measure_live_frame("live_frame_pen_history", pen_strokes, repetitions),
+        _measure_live_frame("live_frame_smooth_history", smooth_strokes, repetitions),
     ]
     print(json.dumps({"renderer_benchmark": results}, sort_keys=True))
+    app.processEvents()
 
 
 if __name__ == "__main__":

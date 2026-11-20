@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Callable, TYPE_CHECKING
+from typing import Callable
+
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 from config.constants import HotkeyDefaults
 from core.app_controller import AppController
-
-if TYPE_CHECKING:
-    from PySide6.QtWidgets import QWidget
 
 
 def _application_tray_icon() -> QIcon:
@@ -20,10 +18,14 @@ def _application_tray_icon() -> QIcon:
 
 
 class TrayIcon:
-    def __init__(self, controller: AppController, show_control_panel: Callable[[], None], parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        controller: AppController,
+        show_control_panel: Callable[[], None],
+    ) -> None:
         self._controller = controller
         self._show_control_panel = show_control_panel
-        self._tray = QSystemTrayIcon(_application_tray_icon(), parent)
+        self._tray = QSystemTrayIcon(_application_tray_icon())
         self._build_menu()
         self._tray.activated.connect(self._on_activated)
         self._tray.setToolTip("MagicScribe — Annotazioni sullo schermo")
@@ -53,6 +55,3 @@ class TrayIcon:
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self._show_control_panel()
-
-    def show_message(self, title: str, message: str) -> None:
-        self._tray.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, 2500)

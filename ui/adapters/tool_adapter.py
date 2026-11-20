@@ -7,18 +7,9 @@ import logging
 from PySide6.QtCore import QObject, Property, Signal, Slot
 
 from core.app_controller import AppController
-from core.models import ToolType
+from core.models import TOOL_SPEC_BY_TYPE, parse_tool_type
 
 logger = logging.getLogger(__name__)
-
-
-def _tool_from_id(tool_id: str) -> ToolType | None:
-    if not isinstance(tool_id, str):
-        return None
-    try:
-        return ToolType[tool_id.strip().upper()]
-    except KeyError:
-        return None
 
 
 class ToolAdapter(QObject):
@@ -56,13 +47,13 @@ class ToolAdapter(QObject):
     )
     colorAvailable = Property(
         bool,
-        lambda self: self._controller.get_current_tool() is not ToolType.ERASER,
+        lambda self: TOOL_SPEC_BY_TYPE[self._controller.get_current_tool()].supports_color,
         notify=currentToolChanged,
     )
 
     @Slot(str)
     def select_tool(self, tool_id: str) -> None:
-        tool = _tool_from_id(tool_id)
+        tool = parse_tool_type(tool_id)
         if tool is None:
             logger.warning("ToolAdapter: strumento QML non valido: %r", tool_id)
             return

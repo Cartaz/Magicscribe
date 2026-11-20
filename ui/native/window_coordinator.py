@@ -149,4 +149,6 @@ class WindowCoordinator:
                 window.setMask(region)
 
         apply_region()
+        # QWindow.setMask() non ha effetto prima che esista la finestra nativa:
+        # ripetiamo al prossimo giro dell'event loop per coprire il primo show().
         QTimer.singleShot(0, apply_region)

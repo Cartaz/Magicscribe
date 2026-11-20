@@ -5,22 +5,9 @@ from __future__ import annotations
 import logging
 
 from config.settings import Settings
-from core.models import TOOL_SPEC_BY_TYPE, ToolConfig, ToolType
+from core.models import TOOL_SPEC_BY_TYPE, ToolConfig, ToolType, parse_tool_type
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_tool_type(value: object) -> ToolType:
-    if isinstance(value, ToolType):
-        return value
-    if isinstance(value, str):
-        try:
-            return ToolType[value.strip().upper()]
-        except KeyError:
-            logger.warning("Strumento non riconosciuto '%s', uso PEN", value)
-    else:
-        logger.warning("Tipo inatteso per last_tool: %r, uso PEN", type(value).__name__)
-    return ToolType.PEN
 
 
 class ToolManager:
@@ -30,7 +17,12 @@ class ToolManager:
         self._settings = settings
 
     def current_tool(self) -> ToolType:
-        return _parse_tool_type(self._settings.get("last_tool"))
+        value = self._settings.get("last_tool")
+        tool = parse_tool_type(value)
+        if tool is None:
+            logger.warning("Strumento non riconosciuto %r, uso PEN", value)
+            return ToolType.PEN
+        return tool
 
     def current_config(self) -> ToolConfig:
         return self.config_for(self.current_tool())
@@ -69,6 +61,3 @@ class ToolManager:
         if not self._settings.set(spec.size_key, size):
             return False
         return self._settings.get(spec.size_key) != before
-
-    def all_tools(self) -> list[ToolType]:
-        return list(ToolType)

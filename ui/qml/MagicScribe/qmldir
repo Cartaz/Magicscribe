@@ -4,6 +4,7 @@ RaisedSurface 1.0 RaisedSurface.qml
 InsetSurface 1.0 InsetSurface.qml
 NeuIconButton 1.0 NeuIconButton.qml
 StatusIndicator 1.0 StatusIndicator.qml
+SurfaceHost 1.0 SurfaceHost.qml
 FloatingPalette 1.0 FloatingPalette.qml
 ControlPanel 1.0 ControlPanel.qml
 WaylandFloatingPalette 1.0 WaylandFloatingPalette.qml

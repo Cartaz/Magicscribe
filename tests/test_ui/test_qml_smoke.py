@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QWindow
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlExpression
@@ -24,7 +21,7 @@ from ui.quick.overlay_surface import OverlaySurface
 _APP = QApplication.instance() or QApplication([])
 
 
-def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
+def test_qml_shell_loads_and_transitions_offscreen(tmp_path, overlay_window_component) -> None:
     settings = Settings(path=tmp_path / "qml.json")
     controller = AppController(settings)
     drawing_adapter = DrawingAdapter(controller)
@@ -32,7 +29,9 @@ def test_qml_shell_loads_and_transitions_offscreen(tmp_path) -> None:
     tool_model = ToolListModel()
 
     QQuickWindow.setDefaultAlphaBuffer(True)
-    overlay_surface = OverlaySurface(drawing_adapter, tool_adapter)
+    overlay_surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
     coordinator = WindowCoordinator()
     shell_adapter = ShellAdapter(coordinator)
 

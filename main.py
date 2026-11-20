@@ -11,6 +11,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
+import signal
 import sys
 
 _is_wayland_session = (
@@ -22,6 +23,7 @@ if _is_wayland_session:
     if requested in {"", "xcb"}:
         os.environ["QT_QPA_PLATFORM"] = "wayland"
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon, QWindow
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 from PySide6.QtQuick import QQuickWindow
@@ -75,19 +77,67 @@ def _set_application_icon(app: QApplication, app_dir: Path) -> None:
         app.setWindowIcon(QIcon(str(svg_path)))
 
 
+_QT_MISMATCH_HINT = (
+    "Il Qt di sistema non corrisponde a PySide6: rieseguire install.sh per "
+    "allinearli."
+)
+_LAYER_SHELL_LOAD_FAILURES = ("cannot load library", "undefined symbol")
+
+
+def _looks_like_qt_mismatch(messages: list[str]) -> bool:
+    """Riconosce solo errori di ABI/caricamento, non errori QML generici."""
+    text = " ".join(messages).lower()
+    if "incompatible qt library" in text:
+        return True
+    return "layershell" in text.replace("-", "") and any(
+        failure in text for failure in _LAYER_SHELL_LOAD_FAILURES
+    )
+
+
+def _load_component(
+    engine: QQmlApplicationEngine,
+    name: str,
+    logger: logging.Logger,
+) -> QQmlComponent:
+    component = QQmlComponent(engine)
+    component.loadFromModule("MagicScribe", name)
+    if not component.isReady():
+        messages = [error.toString() for error in component.errors()]
+        for message in messages:
+            logger.critical("Errore QML %s: %s", name, message)
+        if _looks_like_qt_mismatch(messages):
+            logger.critical(_QT_MISMATCH_HINT)
+        raise SystemExit(1)
+    return component
+
+
+def _install_quit_signal_handlers(app: QApplication, logger: logging.Logger) -> QTimer:
+    """Chiude l'app in modo ordinato su SIGINT/SIGTERM.
+
+    Python esegue i signal handler solo tra due bytecode: il timer restituisce
+    periodicamente il controllo all'interprete mentre gira l'event loop Qt.
+    """
+
+    def request_quit(signum: int, _frame: object) -> None:
+        logger.info("Segnale %s ricevuto: chiusura", signal.Signals(signum).name)
+        # Accodato: un segnale arrivato prima di app.exec() non va perso.
+        QTimer.singleShot(0, app.quit)
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, request_quit)
+    timer = QTimer()
+    timer.timeout.connect(lambda: None)
+    timer.start(250)
+    return timer
+
+
 def _create_floating_palette(
     engine: QQmlApplicationEngine,
     drawing_adapter: DrawingAdapter,
     shell_adapter: ShellAdapter,
     logger: logging.Logger,
 ) -> tuple[QQmlComponent, QWindow]:
-    component = QQmlComponent(engine)
-    component.loadFromModule("MagicScribe", "WaylandFloatingPalette")
-    if not component.isReady():
-        for error in component.errors():
-            logger.critical("Errore QML WaylandFloatingPalette: %s", error.toString())
-        raise SystemExit(1)
-
+    component = _load_component(engine, "WaylandFloatingPalette", logger)
     obj = component.createWithInitialProperties(
         {"drawingAdapter": drawing_adapter, "shellAdapter": shell_adapter}
     )
@@ -160,19 +210,36 @@ def main() -> None:
             }
         )
 
-        overlay_surface = OverlaySurface(
-            drawing_adapter,
-            tool_adapter,
-            qml_engine=engine,
-        )
+        overlay_component = _load_component(engine, "WaylandLayerSurface", logger)
+        try:
+            overlay_surface = OverlaySurface(
+                drawing_adapter,
+                tool_adapter,
+                window_component=overlay_component,
+            )
+        except RuntimeError as exc:
+            logger.critical("Overlay layer-shell non disponibile: %s", exc)
+            if _looks_like_qt_mismatch([str(exc)]):
+                logger.critical(_QT_MISMATCH_HINT)
+            raise SystemExit(1) from exc
         overlay_surface.show()
 
         exit_code = 1
         try:
+            load_errors: list[str] = []
+
+            def collect_load_errors(errors: list) -> None:
+                load_errors.extend(error.toString() for error in errors)
+
+            engine.warnings.connect(collect_load_errors)
             engine.loadFromModule("MagicScribe", "WaylandControlPanel")
+            engine.warnings.disconnect(collect_load_errors)
             roots = engine.rootObjects()
             if not roots or not isinstance(roots[0], QWindow):
-                raise SystemExit("Impossibile creare WaylandControlPanel")
+                logger.critical("Impossibile creare WaylandControlPanel")
+                if _looks_like_qt_mismatch(load_errors):
+                    logger.critical(_QT_MISMATCH_HINT)
+                raise SystemExit(1)
 
             control_window = roots[0]
             floating_component, floating_window = _create_floating_palette(
@@ -189,10 +256,16 @@ def main() -> None:
 
             global_shortcuts.start("")
             tray = TrayIcon(controller, window_coordinator.restore_control_panel)
+            signal_timer = _install_quit_signal_handlers(app, logger)
 
             logger.info("Applicazione avviata con shell e overlay Qt Quick")
             exit_code = app.exec()
-            _ = tray, floating_component
+            # Dopo l'event loop un secondo Ctrl+C deve poter interrompere uno
+            # shutdown bloccato; SIGTERM resta gestito perché il cleanup
+            # sottostante (sessione portal, impostazioni) arrivi a termine.
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            # Riferimenti Python mantenuti vivi per tutta la durata dell'event loop.
+            _ = tray, floating_component, overlay_component, signal_timer
         finally:
             global_shortcuts.shutdown()
             window_coordinator.shutdown()

@@ -19,6 +19,8 @@ from PySide6.QtQml import QQmlEngine
 logger = logging.getLogger(__name__)
 
 _LAYER_SHELL_RELATIVE = Path("org/kde/layershell/qmldir")
+# Arch/CachyOS installano qtpaths6 fuori dal PATH (stesso fallback di install.sh).
+_QTPATHS6_FALLBACK = "/usr/lib/qt6/bin/qtpaths6"
 
 
 def _candidate_qml_roots() -> list[Path]:
@@ -35,6 +37,8 @@ def _candidate_qml_roots() -> list[Path]:
     )
 
     qtpaths = shutil.which("qtpaths6")
+    if qtpaths is None and Path(_QTPATHS6_FALLBACK).is_file():
+        qtpaths = _QTPATHS6_FALLBACK
     if qtpaths:
         try:
             qml_root = subprocess.run(

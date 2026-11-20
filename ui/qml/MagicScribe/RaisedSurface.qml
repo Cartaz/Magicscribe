@@ -5,27 +5,26 @@ Item {
     id: root
 
     property real radius: Theme.radiusLarge
-    property bool strong: false
 
     RectangularShadow {
         anchors.fill: surfaceRect
         z: -3
-        offset: root.strong ? Qt.vector2d(8, 8) : Qt.vector2d(3.5, 3.5)
-        blur: root.strong ? 20 : 10
+        offset: Qt.vector2d(3.5, 3.5)
+        blur: 10
         spread: 0
         radius: root.radius
-        color: root.strong ? Theme.shadowDarkStrong : Theme.shadowDarkSoft
+        color: Theme.shadowDarkSoft
         cached: false
     }
 
     RectangularShadow {
         anchors.fill: surfaceRect
         z: -2
-        offset: root.strong ? Qt.vector2d(-6, -6) : Qt.vector2d(-3, -3)
-        blur: root.strong ? 15 : 8.5
+        offset: Qt.vector2d(-3, -3)
+        blur: 8.5
         spread: 0
         radius: root.radius
-        color: root.strong ? Theme.shadowLightStrong : Theme.shadowLightSoft
+        color: Theme.shadowLightSoft
         cached: false
     }
 
