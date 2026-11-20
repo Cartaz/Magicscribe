@@ -169,6 +169,9 @@ if [ ! -f "${SVG_SRC}" ]; then
 fi
 mkdir -p "${ICON_THEME_DIR}/scalable/apps"
 cp -f "${SVG_SRC}" "${ICON_THEME_DIR}/scalable/apps/magicscribe.svg"
+# Le installazioni precedenti copiavano anche PNG a dimensione fissa, che il
+# tema icone preferisce allo SVG: senza rimuoverli il menu mostra l'icona vecchia.
+rm -f "${ICON_THEME_DIR}"/*x*/apps/magicscribe.png
 gtk-update-icon-cache "${ICON_THEME_DIR}" 2>/dev/null || true
 
 desktop_exec_quote() {
