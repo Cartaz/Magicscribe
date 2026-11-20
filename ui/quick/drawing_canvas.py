@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
+
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QMouseEvent, QPainter
+from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter
 from PySide6.QtQuick import QQuickPaintedItem
 
 from core.models import Point, Stroke
@@ -12,7 +14,12 @@ from ui.drawing_engine import DrawingEngine
 
 
 class DrawingCanvas(QQuickPaintedItem):
-    """Superficie di disegno con coordinate canoniche globali del desktop."""
+    """Superficie di disegno con coordinate canoniche globali del desktop.
+
+    I tratti gia' committati vengono rasterizzati una sola volta in un layer
+    cache, ricostruito solo quando cambiano cronologia, origine o dimensione:
+    durante il disegno ogni frame compone il layer e il solo tratto in corso.
+    """
 
     def __init__(
         self,
@@ -25,6 +32,7 @@ class DrawingCanvas(QQuickPaintedItem):
         self._adapter = adapter
         self._current_stroke: Stroke | None = None
         self._global_origin = QPointF(global_origin or QPointF())
+        self._committed_layer: QImage | None = None
 
         self.setAcceptedMouseButtons(
             Qt.MouseButton.LeftButton
@@ -35,7 +43,7 @@ class DrawingCanvas(QQuickPaintedItem):
         self.setOpaquePainting(False)
         self.setFillColor(QColor(0, 0, 0, 0))
 
-        adapter.repaintRequested.connect(self.update)
+        adapter.repaintRequested.connect(self._on_committed_strokes_changed)
         adapter.activeChanged.connect(self._on_active_changed)
 
     def set_global_origin(self, origin: QPointF) -> None:
@@ -43,7 +51,7 @@ class DrawingCanvas(QQuickPaintedItem):
         if self._global_origin == origin:
             return
         self._global_origin = QPointF(origin)
-        self.update()
+        self._on_committed_strokes_changed()
 
     def global_origin(self) -> QPointF:
         return QPointF(self._global_origin)
@@ -53,15 +61,49 @@ class DrawingCanvas(QQuickPaintedItem):
         if not self._adapter.annotationsVisible:
             return
 
+        painter.drawImage(QPointF(0, 0), self._committed_strokes_layer())
+        if self._current_stroke is None:
+            return
+
         painter.save()
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.translate(-self._global_origin.x(), -self._global_origin.y())
-            DrawingEngine.render_strokes(painter, self._adapter.strokes_snapshot())
-            if self._current_stroke is not None:
-                DrawingEngine.render_stroke(painter, self._current_stroke)
+            DrawingEngine.render_stroke(painter, self._current_stroke)
         finally:
             painter.restore()
+
+    def _committed_strokes_layer(self) -> QImage:
+        window = self.window()
+        ratio = window.effectiveDevicePixelRatio() if window is not None else 1.0
+        width = max(1, math.ceil(self.width() * ratio))
+        height = max(1, math.ceil(self.height() * ratio))
+
+        layer = self._committed_layer
+        if (
+            layer is not None
+            and layer.width() == width
+            and layer.height() == height
+            and layer.devicePixelRatio() == ratio
+        ):
+            return layer
+
+        layer = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+        layer.setDevicePixelRatio(ratio)
+        layer.fill(Qt.GlobalColor.transparent)
+        layer_painter = QPainter(layer)
+        try:
+            layer_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            layer_painter.translate(-self._global_origin.x(), -self._global_origin.y())
+            DrawingEngine.render_strokes(layer_painter, self._adapter.strokes_snapshot())
+        finally:
+            layer_painter.end()
+        self._committed_layer = layer
+        return layer
+
+    def _on_committed_strokes_changed(self) -> None:
+        self._committed_layer = None
+        self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if (

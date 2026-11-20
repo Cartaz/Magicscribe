@@ -15,6 +15,7 @@ from config.settings import Settings
 from core.app_controller import AppController
 from ui.adapters.drawing_adapter import DrawingAdapter
 from ui.adapters.tool_adapter import ToolAdapter
+from ui.drawing_engine import DrawingEngine
 from ui.quick.drawing_canvas import DrawingCanvas
 from ui.quick.overlay_surface import OverlaySurface
 import ui.quick.overlay_surface as overlay_surface_module
@@ -145,3 +146,76 @@ def test_shape_preview_keeps_two_endpoints(tmp_path) -> None:
     tool_adapter.close()
     settings.close()
     _APP.processEvents()
+
+
+def _paint(canvas: DrawingCanvas, size: int = 64) -> QImage:
+    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    try:
+        canvas.paint(painter)
+    finally:
+        painter.end()
+    return image
+
+
+def test_live_frames_reuse_the_committed_strokes_layer(tmp_path, monkeypatch) -> None:
+    settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    canvas = DrawingCanvas(drawing_adapter)
+    canvas.setWidth(64)
+    canvas.setHeight(64)
+    drawing_adapter.toggle_drawing()
+    canvas._begin_stroke(QPointF(5, 5))
+    canvas._finish_stroke(QPointF(20, 5))
+
+    history_renders: list[int] = []
+    original = DrawingEngine.render_strokes
+
+    def counting_render(painter, strokes):
+        history_renders.append(len(strokes))
+        original(painter, strokes)
+
+    monkeypatch.setattr(DrawingEngine, "render_strokes", staticmethod(counting_render))
+    try:
+        canvas._begin_stroke(QPointF(5, 40))
+        for x in range(6, 40):
+            canvas._extend_stroke(QPointF(x, 40))
+            image = _paint(canvas)
+        # Una sola rasterizzazione della cronologia per tutti i frame live.
+        assert history_renders == [1]
+        assert image.pixelColor(10, 5).alpha() > 0
+        assert image.pixelColor(30, 40).alpha() > 0
+
+        canvas._finish_stroke(QPointF(40, 40))
+        _paint(canvas)
+        assert history_renders == [1, 2]
+    finally:
+        canvas.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
+        settings.close()
+        _APP.processEvents()
+
+
+def test_history_changes_invalidate_the_committed_layer(tmp_path) -> None:
+    settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    canvas = DrawingCanvas(drawing_adapter)
+    canvas.setWidth(64)
+    canvas.setHeight(64)
+    drawing_adapter.toggle_drawing()
+    canvas._begin_stroke(QPointF(10, 10))
+    canvas._finish_stroke(QPointF(30, 10))
+    try:
+        assert _paint(canvas).pixelColor(20, 10).alpha() > 0
+        drawing_adapter.undo()
+        assert _paint(canvas).pixelColor(20, 10).alpha() == 0
+        drawing_adapter.redo()
+        assert _paint(canvas).pixelColor(20, 10).alpha() > 0
+        drawing_adapter.clear_screen()
+        assert _paint(canvas).pixelColor(20, 10).alpha() == 0
+    finally:
+        canvas.deleteLater()
+        drawing_adapter.close()
+        tool_adapter.close()
+        settings.close()
+        _APP.processEvents()
