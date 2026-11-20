@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QMetaMethod, QPointF
 
 from config.settings import Settings
 from core.app_controller import AppController
@@ -67,15 +64,16 @@ def test_tool_adapter_rejects_invalid_values(tmp_path) -> None:
     adapter.close()
 
 
-def test_qml_adapters_never_alias_slot_names() -> None:
-    root = Path(__file__).resolve().parents[2]
-    alias_pattern = re.compile(r"^\s*@Slot\([^)]*\bname\s*=", re.MULTILINE)
-    for relative_path in (
-        "ui/adapters/drawing_adapter.py",
-        "ui/adapters/tool_adapter.py",
-        "ui/adapters/shell_adapter.py",
-    ):
-        assert alias_pattern.search((root / relative_path).read_text(encoding="utf-8")) is None
+def test_qml_slots_keep_their_python_names() -> None:
+    # Slot aliases (@Slot(name=...)) crashed PySide6 when called from QML.
+    for adapter_class in (DrawingAdapter, ToolAdapter, ShellAdapter):
+        meta = adapter_class.staticMetaObject
+        for index in range(meta.methodOffset(), meta.methodCount()):
+            method = meta.method(index)
+            if method.methodType() != QMetaMethod.MethodType.Slot:
+                continue
+            name = bytes(method.name()).decode()
+            assert callable(getattr(adapter_class, name, None)), (adapter_class, name)
 
 
 def test_shell_adapter_only_uses_public_coordinator_api() -> None:
