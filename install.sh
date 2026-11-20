@@ -53,12 +53,32 @@ else
     echo "     Ambiente virtuale valido."
 fi
 
-# 2. Dipendenze: una sola sorgente di verità in requirements.txt
-echo "[2/6] Installazione dipendenze pinned..."
+# 2. Dipendenze runtime. layer-shell-qt usa API private QtWayland, quindi
+# PySide6 deve avere esattamente la versione del Qt di sistema: il pin di
+# requirements.txt vale solo per la CI e qui viene sostituito.
+echo "[2/6] Installazione dipendenze runtime..."
+QT_PATHS6="$(command -v qtpaths6 || true)"
+if [[ -z "${QT_PATHS6}" && -x /usr/lib/qt6/bin/qtpaths6 ]]; then
+    QT_PATHS6="/usr/lib/qt6/bin/qtpaths6"
+fi
+if [[ -z "${QT_PATHS6}" ]]; then
+    echo "ERRORE: qtpaths6 non trovato; necessario per scegliere la versione di PySide6." >&2
+    exit 1
+fi
+SYSTEM_QT_VERSION="$("${QT_PATHS6}" --qt-version)"
+echo "     Qt di sistema: ${SYSTEM_QT_VERSION}"
+
+RUNTIME_REQUIREMENTS="$(grep -viE '^[[:space:]]*pyside6[[:space:]]*(==|$)' "${SCRIPT_DIR}/requirements.txt")"
 "${VENV_DIR}/bin/python" -m pip install "pip==${PIP_VERSION}" --quiet
-"${VENV_DIR}/bin/python" -m pip install \
-    -r "${SCRIPT_DIR}/requirements.txt" \
+if ! "${VENV_DIR}/bin/python" -m pip install \
+    "PySide6==${SYSTEM_QT_VERSION}" \
+    -r <(printf '%s\n' "${RUNTIME_REQUIREMENTS}") \
     --quiet
+then
+    echo "ERRORE: impossibile installare PySide6==${SYSTEM_QT_VERSION} (Qt di sistema)." >&2
+    echo "Se la release non è ancora su PyPI, riprovare dopo la sua pubblicazione." >&2
+    exit 1
+fi
 "${VENV_DIR}/bin/python" -m pip check
 echo "     Ambiente coerente."
 
@@ -102,21 +122,11 @@ print(
 )
 PY
 
-QT_PATHS6="$(command -v qtpaths6 || true)"
-if [[ -z "${QT_PATHS6}" && -x /usr/lib/qt6/bin/qtpaths6 ]]; then
-    QT_PATHS6="/usr/lib/qt6/bin/qtpaths6"
-fi
-if [[ -z "${QT_PATHS6}" ]]; then
-    echo "ERRORE: qtpaths6 non trovato; necessario per verificare l'ABI di layer-shell-qt." >&2
-    exit 1
-fi
-
 PYSIDE_QT_VERSION="$("${VENV_DIR}/bin/python" - <<'PY'
 from PySide6.QtCore import qVersion
 print(qVersion())
 PY
 )"
-SYSTEM_QT_VERSION="$("${QT_PATHS6}" --qt-version)"
 if [[ "${PYSIDE_QT_VERSION}" != "${SYSTEM_QT_VERSION}" ]]; then
     echo "ERRORE: Qt PySide6=${PYSIDE_QT_VERSION}, Qt sistema=${SYSTEM_QT_VERSION}." >&2
     echo "layer-shell-qt usa API private QtWayland: le versioni devono coincidere." >&2

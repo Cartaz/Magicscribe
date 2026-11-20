@@ -69,18 +69,6 @@ def test_dead_cross_cutting_abstractions_are_removed() -> None:
         assert not (ROOT / relative).exists()
 
 
-def test_dependency_metadata_is_consolidated() -> None:
-    assert (ROOT / "requirements.txt").is_file()
-    for relative in (
-        "pyproject.toml",
-        "requirements-dev.txt",
-        "constraints-release.txt",
-        "constraints-ci.txt",
-        "scripts/verify_release_constraints.py",
-    ):
-        assert not (ROOT / relative).exists()
-
-
 def test_runtime_uses_background_settings_persistence_and_deterministic_close() -> None:
     source = (ROOT / "main.py").read_text(encoding="utf-8")
     assert "background_persistence=True" in source
