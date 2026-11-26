@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import math
 from typing import Any, Protocol
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QEvent, QObject, QPointF, Qt
 from PySide6.QtGui import (
-    QBrush,
     QColor,
     QCursor,
     QGuiApplication,
@@ -26,19 +26,65 @@ from ui.quick.drawing_canvas import DrawingCanvas
 logger = logging.getLogger(__name__)
 
 
-def _create_eraser_cursor(size: int = 32) -> QCursor:
-    """Crea il cursore circolare usato dallo strumento gomma."""
-    pixmap = QPixmap(size, size)
+# Sotto questa soglia un anello non si distingue piu' da un punto: il cerchio
+# resta leggibile anche se l'area cancellata e' leggermente piu' piccola.
+_ERASER_CURSOR_MIN_DIAMETER = 6.0
+
+
+def _create_eraser_cursor(diameter: float, device_pixel_ratio: float = 1.0) -> QCursor:
+    """Crea il cursore circolare della gomma con il diametro reale del tratto.
+
+    ``diameter`` e' in pixel logici, come lo spessore del tratto sulla canvas;
+    la pixmap e' generata in pixel fisici cosi' il cerchio resta nitido e della
+    stessa dimensione dell'area cancellata anche su schermi HiDPI.
+
+    QtWayland invia i cursori bitmap con un ``buffer_scale`` intero: con lo
+    scaling frazionario la pixmap usa il ratio intero superiore e un lato
+    multiplo di esso, e il compositor la riduce alla dimensione logica giusta.
+    """
+    diameter = max(float(diameter), _ERASER_CURSOR_MIN_DIAMETER)
+    ratio = max(math.ceil(device_pixel_ratio), 1)
+    margin = 2.0
+    # Lato pari: il centro dell'anello cade su un pixel intero, dove sta l'hotspot.
+    logical_side = math.ceil(diameter + 2 * margin)
+    logical_side += logical_side % 2
+    physical_side = logical_side * ratio
+
+    pixmap = QPixmap(physical_side, physical_side)
+    pixmap.setDevicePixelRatio(ratio)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     try:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QBrush(QColor(0, 0, 0, 0)))
-        painter.setPen(QPen(QColor(255, 255, 255, 180), 2))
-        painter.drawEllipse(2, 2, size - 4, size - 4)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        center = QPointF(logical_side / 2, logical_side / 2)
+        radius = diameter / 2
+        # Doppio anello chiaro/scuro: visibile sia su sfondi chiari che scuri.
+        painter.setPen(QPen(QColor(0, 0, 0, 160), 3))
+        painter.drawEllipse(center, radius, radius)
+        painter.setPen(QPen(QColor(255, 255, 255, 220), 1.5))
+        painter.drawEllipse(center, radius, radius)
     finally:
         painter.end()
-    return QCursor(pixmap, size // 2, size // 2)
+    hotspot = logical_side // 2
+    return QCursor(pixmap, hotspot, hotspot)
+
+
+class _DevicePixelRatioWatcher(QObject):
+    """Notifica quando una finestra overlay cambia device pixel ratio.
+
+    Serve per i cambi di scala che non alterano geometria logica e DPI logici
+    dello schermo, e quindi non emettono alcun segnale di QScreen.
+    """
+
+    def __init__(self, callback) -> None:
+        super().__init__()
+        self._callback = callback
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.DevicePixelRatioChange:
+            self._callback()
+        return False
 
 
 class WindowComponent(Protocol):
@@ -54,6 +100,7 @@ class _OverlayView:
     screen: QScreen
     window: QQuickWindow
     canvas: DrawingCanvas
+    cursor_key: object = None
 
 
 class OverlaySurface:
@@ -75,7 +122,7 @@ class OverlaySurface:
         self._drawing_adapter = drawing_adapter
         self._tool_adapter = tool_adapter
         self._window_component = window_component
-        self._eraser_cursor = _create_eraser_cursor()
+        self._dpr_watcher = _DevicePixelRatioWatcher(self._sync_cursor)
         self._screen_signals_connected = False
         self._bound_screens: list[QScreen] = []
         self._views: list[_OverlayView] = []
@@ -83,6 +130,7 @@ class OverlaySurface:
 
         drawing_adapter.activeChanged.connect(self._sync_input_mode)
         tool_adapter.currentToolChanged.connect(self._sync_cursor)
+        tool_adapter.configChanged.connect(self._sync_cursor)
 
         self._bind_screen_signals()
         self._build_views()
@@ -134,6 +182,7 @@ class OverlaySurface:
 
         window = obj
         window.setObjectName("overlayWindow" if index == 0 else f"overlayWindow{index}")
+        window.installEventFilter(self._dpr_watcher)
         window.setTitle("MagicScribe Overlay")
         return window
 
@@ -186,10 +235,15 @@ class OverlaySurface:
         for screen in self._bound_screens:
             screen.geometryChanged.connect(self._on_screen_geometry_changed)
             screen.virtualGeometryChanged.connect(self._on_screen_geometry_changed)
+            screen.logicalDotsPerInchChanged.connect(self._on_screen_geometry_changed)
 
     def _disconnect_screen_geometry_signals(self) -> None:
         for screen in self._bound_screens:
-            for signal in (screen.geometryChanged, screen.virtualGeometryChanged):
+            for signal in (
+                screen.geometryChanged,
+                screen.virtualGeometryChanged,
+                screen.logicalDotsPerInchChanged,
+            ):
                 try:
                     signal.disconnect(self._on_screen_geometry_changed)
                 except (RuntimeError, TypeError):
@@ -225,6 +279,7 @@ class OverlaySurface:
 
     def _on_screen_geometry_changed(self, *_args) -> None:
         self.refresh_geometry()
+        self._sync_cursor()
 
     @staticmethod
     def _sync_canvas_size(view: _OverlayView) -> None:
@@ -259,11 +314,24 @@ class OverlaySurface:
 
     def _sync_cursor(self) -> None:
         if not self._drawing_adapter.active:
-            cursor = QCursor(Qt.CursorShape.ArrowCursor)
+            shape: Qt.CursorShape | None = Qt.CursorShape.ArrowCursor
         elif self._tool_adapter.currentTool == "eraser":
-            cursor = self._eraser_cursor
+            shape = None
         else:
-            cursor = QCursor(Qt.CursorShape.CrossCursor)
+            shape = Qt.CursorShape.CrossCursor
 
         for view in self._views:
-            view.window.setCursor(cursor)
+            if shape is None:
+                key: object = (
+                    float(self._tool_adapter.currentSize),
+                    view.window.devicePixelRatio(),
+                )
+            else:
+                key = shape
+            if key == view.cursor_key:
+                continue
+            view.cursor_key = key
+            if shape is None:
+                view.window.setCursor(_create_eraser_cursor(*key))
+            else:
+                view.window.setCursor(QCursor(shape))

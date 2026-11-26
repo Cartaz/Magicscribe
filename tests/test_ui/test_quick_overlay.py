@@ -329,3 +329,98 @@ def test_empty_canvas_holds_no_layer(tmp_path) -> None:
         tool_adapter.close()
         settings.close()
         _APP.processEvents()
+
+
+def test_eraser_cursor_matches_eraser_size(tmp_path, overlay_window_component) -> None:
+    settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
+    try:
+        drawing_adapter.toggle_drawing()
+        tool_adapter.select_tool("eraser")
+        tool_adapter.set_size(80)
+        _APP.processEvents()
+
+        window = surface.windows[0]
+        pixmap = window.cursor().pixmap()
+        logical_width = pixmap.width() / pixmap.devicePixelRatio()
+        assert 80 <= logical_width <= 90
+
+        tool_adapter.set_size(20)
+        _APP.processEvents()
+        pixmap = window.cursor().pixmap()
+        logical_width = pixmap.width() / pixmap.devicePixelRatio()
+        assert 20 <= logical_width <= 30
+
+        tool_adapter.select_tool("pen")
+        _APP.processEvents()
+        assert window.cursor().shape() == Qt.CursorShape.CrossCursor
+    finally:
+        _close(surface, settings, drawing_adapter, tool_adapter)
+
+
+def test_eraser_cursor_uses_integer_scale_for_fractional_ratio() -> None:
+    from ui.quick.overlay_surface import _create_eraser_cursor
+
+    pixmap = _create_eraser_cursor(19, 1.5).pixmap()
+    assert pixmap.devicePixelRatio() == 2
+    assert pixmap.width() % 2 == 0
+    assert 19 <= pixmap.width() / 2 <= 25
+
+
+def test_eraser_cursor_is_centered_on_its_hotspot() -> None:
+    from ui.quick.overlay_surface import _create_eraser_cursor
+
+    for diameter in (19, 20):
+        cursor = _create_eraser_cursor(diameter, 1.0)
+        pixmap = cursor.pixmap()
+        assert pixmap.width() % 2 == 0
+        assert cursor.hotSpot().x() * 2 == pixmap.width()
+        assert cursor.hotSpot().y() * 2 == pixmap.height()
+
+
+def test_eraser_cursor_matches_window_scale(tmp_path, overlay_window_component) -> None:
+    import math
+
+    settings, _controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
+    try:
+        drawing_adapter.toggle_drawing()
+        tool_adapter.select_tool("eraser")
+        for view in surface._views:
+            ratio = view.window.cursor().pixmap().devicePixelRatio()
+            assert ratio == max(math.ceil(view.window.devicePixelRatio()), 1)
+    finally:
+        _close(surface, settings, drawing_adapter, tool_adapter)
+
+
+def _stale_eraser_cursor(surface) -> object:
+    view = surface._views[0]
+    view.cursor_key = (40.0, 99.0)
+    view.window.setCursor(Qt.CursorShape.ArrowCursor)
+    return view
+
+
+def test_eraser_cursor_rebuilds_on_scale_change(tmp_path, overlay_window_component) -> None:
+    from PySide6.QtCore import QEvent
+
+    settings, _controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
+    try:
+        drawing_adapter.toggle_drawing()
+        tool_adapter.select_tool("eraser")
+
+        view = _stale_eraser_cursor(surface)
+        _APP.sendEvent(view.window, QEvent(QEvent.Type.DevicePixelRatioChange))
+        assert view.window.cursor().shape() == Qt.CursorShape.BitmapCursor
+
+        view = _stale_eraser_cursor(surface)
+        view.screen.logicalDotsPerInchChanged.emit(96.0)
+        assert view.window.cursor().shape() == Qt.CursorShape.BitmapCursor
+    finally:
+        _close(surface, settings, drawing_adapter, tool_adapter)
