@@ -7,7 +7,7 @@ import logging
 import math
 from typing import Any, Protocol
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QEvent, QObject, QPointF, Qt
 from PySide6.QtGui import (
     QColor,
     QCursor,
@@ -70,6 +70,23 @@ def _create_eraser_cursor(diameter: float, device_pixel_ratio: float = 1.0) -> Q
     return QCursor(pixmap, hotspot, hotspot)
 
 
+class _DevicePixelRatioWatcher(QObject):
+    """Notifica quando una finestra overlay cambia device pixel ratio.
+
+    Serve per i cambi di scala che non alterano geometria logica e DPI logici
+    dello schermo, e quindi non emettono alcun segnale di QScreen.
+    """
+
+    def __init__(self, callback) -> None:
+        super().__init__()
+        self._callback = callback
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.DevicePixelRatioChange:
+            self._callback()
+        return False
+
+
 class WindowComponent(Protocol):
     """Sottoinsieme di ``QQmlComponent`` usato per creare le layer-surface."""
 
@@ -105,6 +122,7 @@ class OverlaySurface:
         self._drawing_adapter = drawing_adapter
         self._tool_adapter = tool_adapter
         self._window_component = window_component
+        self._dpr_watcher = _DevicePixelRatioWatcher(self._sync_cursor)
         self._screen_signals_connected = False
         self._bound_screens: list[QScreen] = []
         self._views: list[_OverlayView] = []
@@ -164,6 +182,7 @@ class OverlaySurface:
 
         window = obj
         window.setObjectName("overlayWindow" if index == 0 else f"overlayWindow{index}")
+        window.installEventFilter(self._dpr_watcher)
         window.setTitle("MagicScribe Overlay")
         return window
 
@@ -303,11 +322,9 @@ class OverlaySurface:
 
         for view in self._views:
             if shape is None:
-                # Lo scale dell'output (non quello della finestra) cambia insieme
-                # a geometryChanged/logicalDotsPerInchChanged, a cui siamo collegati.
                 key: object = (
                     float(self._tool_adapter.currentSize),
-                    view.screen.devicePixelRatio(),
+                    view.window.devicePixelRatio(),
                 )
             else:
                 key = shape

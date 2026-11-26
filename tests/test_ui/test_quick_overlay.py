@@ -369,7 +369,6 @@ def test_eraser_cursor_uses_integer_scale_for_fractional_ratio() -> None:
     assert 19 <= pixmap.width() / 2 <= 25
 
 
-
 def test_eraser_cursor_is_centered_on_its_hotspot() -> None:
     from ui.quick.overlay_surface import _create_eraser_cursor
 
@@ -381,7 +380,7 @@ def test_eraser_cursor_is_centered_on_its_hotspot() -> None:
         assert cursor.hotSpot().y() * 2 == pixmap.height()
 
 
-def test_eraser_cursor_matches_screen_scale(tmp_path, overlay_window_component) -> None:
+def test_eraser_cursor_matches_window_scale(tmp_path, overlay_window_component) -> None:
     import math
 
     settings, _controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
@@ -393,6 +392,35 @@ def test_eraser_cursor_matches_screen_scale(tmp_path, overlay_window_component) 
         tool_adapter.select_tool("eraser")
         for view in surface._views:
             ratio = view.window.cursor().pixmap().devicePixelRatio()
-            assert ratio == max(math.ceil(view.screen.devicePixelRatio()), 1)
+            assert ratio == max(math.ceil(view.window.devicePixelRatio()), 1)
+    finally:
+        _close(surface, settings, drawing_adapter, tool_adapter)
+
+
+def _stale_eraser_cursor(surface) -> object:
+    view = surface._views[0]
+    view.cursor_key = (40.0, 99.0)
+    view.window.setCursor(Qt.CursorShape.ArrowCursor)
+    return view
+
+
+def test_eraser_cursor_rebuilds_on_scale_change(tmp_path, overlay_window_component) -> None:
+    from PySide6.QtCore import QEvent
+
+    settings, _controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
+    try:
+        drawing_adapter.toggle_drawing()
+        tool_adapter.select_tool("eraser")
+
+        view = _stale_eraser_cursor(surface)
+        _APP.sendEvent(view.window, QEvent(QEvent.Type.DevicePixelRatioChange))
+        assert view.window.cursor().shape() == Qt.CursorShape.BitmapCursor
+
+        view = _stale_eraser_cursor(surface)
+        view.screen.logicalDotsPerInchChanged.emit(96.0)
+        assert view.window.cursor().shape() == Qt.CursorShape.BitmapCursor
     finally:
         _close(surface, settings, drawing_adapter, tool_adapter)
