@@ -7,7 +7,7 @@ import logging
 import math
 from typing import Any, Protocol
 
-from PySide6.QtCore import QEvent, QObject, QPointF, Qt
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import (
     QColor,
     QCursor,
@@ -45,7 +45,9 @@ def _create_eraser_cursor(diameter: float, device_pixel_ratio: float = 1.0) -> Q
     diameter = max(float(diameter), _ERASER_CURSOR_MIN_DIAMETER)
     ratio = max(math.ceil(device_pixel_ratio), 1)
     margin = 2.0
+    # Lato pari: il centro dell'anello cade su un pixel intero, dove sta l'hotspot.
     logical_side = math.ceil(diameter + 2 * margin)
+    logical_side += logical_side % 2
     physical_side = logical_side * ratio
 
     pixmap = QPixmap(physical_side, physical_side)
@@ -64,20 +66,8 @@ def _create_eraser_cursor(diameter: float, device_pixel_ratio: float = 1.0) -> Q
         painter.drawEllipse(center, radius, radius)
     finally:
         painter.end()
-    return QCursor(pixmap)
-
-
-class _DevicePixelRatioWatcher(QObject):
-    """Notifica quando una finestra overlay cambia device pixel ratio."""
-
-    def __init__(self, callback) -> None:
-        super().__init__()
-        self._callback = callback
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        if event.type() == QEvent.Type.DevicePixelRatioChange:
-            self._callback()
-        return False
+    hotspot = logical_side // 2
+    return QCursor(pixmap, hotspot, hotspot)
 
 
 class WindowComponent(Protocol):
@@ -93,6 +83,7 @@ class _OverlayView:
     screen: QScreen
     window: QQuickWindow
     canvas: DrawingCanvas
+    cursor_key: object = None
 
 
 class OverlaySurface:
@@ -114,7 +105,6 @@ class OverlaySurface:
         self._drawing_adapter = drawing_adapter
         self._tool_adapter = tool_adapter
         self._window_component = window_component
-        self._dpr_watcher = _DevicePixelRatioWatcher(self._sync_cursor)
         self._screen_signals_connected = False
         self._bound_screens: list[QScreen] = []
         self._views: list[_OverlayView] = []
@@ -174,7 +164,6 @@ class OverlaySurface:
 
         window = obj
         window.setObjectName("overlayWindow" if index == 0 else f"overlayWindow{index}")
-        window.installEventFilter(self._dpr_watcher)
         window.setTitle("MagicScribe Overlay")
         return window
 
@@ -227,10 +216,15 @@ class OverlaySurface:
         for screen in self._bound_screens:
             screen.geometryChanged.connect(self._on_screen_geometry_changed)
             screen.virtualGeometryChanged.connect(self._on_screen_geometry_changed)
+            screen.logicalDotsPerInchChanged.connect(self._on_screen_geometry_changed)
 
     def _disconnect_screen_geometry_signals(self) -> None:
         for screen in self._bound_screens:
-            for signal in (screen.geometryChanged, screen.virtualGeometryChanged):
+            for signal in (
+                screen.geometryChanged,
+                screen.virtualGeometryChanged,
+                screen.logicalDotsPerInchChanged,
+            ):
                 try:
                     signal.disconnect(self._on_screen_geometry_changed)
                 except (RuntimeError, TypeError):
@@ -309,11 +303,18 @@ class OverlaySurface:
 
         for view in self._views:
             if shape is None:
-                view.window.setCursor(
-                    _create_eraser_cursor(
-                        self._tool_adapter.currentSize,
-                        view.window.devicePixelRatio(),
-                    )
+                # Lo scale dell'output (non quello della finestra) cambia insieme
+                # a geometryChanged/logicalDotsPerInchChanged, a cui siamo collegati.
+                key: object = (
+                    float(self._tool_adapter.currentSize),
+                    view.screen.devicePixelRatio(),
                 )
+            else:
+                key = shape
+            if key == view.cursor_key:
+                continue
+            view.cursor_key = key
+            if shape is None:
+                view.window.setCursor(_create_eraser_cursor(*key))
             else:
                 view.window.setCursor(QCursor(shape))
