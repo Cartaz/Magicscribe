@@ -7,7 +7,7 @@ import logging
 import math
 from typing import Any, Protocol
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QEvent, QObject, QPointF, Qt
 from PySide6.QtGui import (
     QColor,
     QCursor,
@@ -26,6 +26,8 @@ from ui.quick.drawing_canvas import DrawingCanvas
 logger = logging.getLogger(__name__)
 
 
+# Sotto questa soglia un anello non si distingue piu' da un punto: il cerchio
+# resta leggibile anche se l'area cancellata e' leggermente piu' piccola.
 _ERASER_CURSOR_MIN_DIAMETER = 6.0
 
 
@@ -35,12 +37,16 @@ def _create_eraser_cursor(diameter: float, device_pixel_ratio: float = 1.0) -> Q
     ``diameter`` e' in pixel logici, come lo spessore del tratto sulla canvas;
     la pixmap e' generata in pixel fisici cosi' il cerchio resta nitido e della
     stessa dimensione dell'area cancellata anche su schermi HiDPI.
+
+    QtWayland invia i cursori bitmap con un ``buffer_scale`` intero: con lo
+    scaling frazionario la pixmap usa il ratio intero superiore e un lato
+    multiplo di esso, e il compositor la riduce alla dimensione logica giusta.
     """
     diameter = max(float(diameter), _ERASER_CURSOR_MIN_DIAMETER)
-    ratio = max(float(device_pixel_ratio), 1.0)
+    ratio = max(math.ceil(device_pixel_ratio), 1)
     margin = 2.0
     logical_side = math.ceil(diameter + 2 * margin)
-    physical_side = math.ceil(logical_side * ratio)
+    physical_side = logical_side * ratio
 
     pixmap = QPixmap(physical_side, physical_side)
     pixmap.setDevicePixelRatio(ratio)
@@ -59,6 +65,19 @@ def _create_eraser_cursor(diameter: float, device_pixel_ratio: float = 1.0) -> Q
     finally:
         painter.end()
     return QCursor(pixmap)
+
+
+class _DevicePixelRatioWatcher(QObject):
+    """Notifica quando una finestra overlay cambia device pixel ratio."""
+
+    def __init__(self, callback) -> None:
+        super().__init__()
+        self._callback = callback
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.DevicePixelRatioChange:
+            self._callback()
+        return False
 
 
 class WindowComponent(Protocol):
@@ -95,7 +114,7 @@ class OverlaySurface:
         self._drawing_adapter = drawing_adapter
         self._tool_adapter = tool_adapter
         self._window_component = window_component
-        self._eraser_cursors: dict[tuple[float, float], QCursor] = {}
+        self._dpr_watcher = _DevicePixelRatioWatcher(self._sync_cursor)
         self._screen_signals_connected = False
         self._bound_screens: list[QScreen] = []
         self._views: list[_OverlayView] = []
@@ -155,6 +174,7 @@ class OverlaySurface:
 
         window = obj
         window.setObjectName("overlayWindow" if index == 0 else f"overlayWindow{index}")
+        window.installEventFilter(self._dpr_watcher)
         window.setTitle("MagicScribe Overlay")
         return window
 
@@ -279,17 +299,6 @@ class OverlaySurface:
             # ma la richiesta diventa effettiva solo al successivo surface commit.
             window.requestUpdate()
 
-    def _eraser_cursor(self, window: QQuickWindow) -> QCursor:
-        key = (
-            float(self._tool_adapter.currentSize),
-            float(window.devicePixelRatio()),
-        )
-        cursor = self._eraser_cursors.get(key)
-        if cursor is None:
-            cursor = _create_eraser_cursor(*key)
-            self._eraser_cursors[key] = cursor
-        return cursor
-
     def _sync_cursor(self) -> None:
         if not self._drawing_adapter.active:
             shape: Qt.CursorShape | None = Qt.CursorShape.ArrowCursor
@@ -300,6 +309,11 @@ class OverlaySurface:
 
         for view in self._views:
             if shape is None:
-                view.window.setCursor(self._eraser_cursor(view.window))
+                view.window.setCursor(
+                    _create_eraser_cursor(
+                        self._tool_adapter.currentSize,
+                        view.window.devicePixelRatio(),
+                    )
+                )
             else:
                 view.window.setCursor(QCursor(shape))
