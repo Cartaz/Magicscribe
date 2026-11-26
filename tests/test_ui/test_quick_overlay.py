@@ -329,3 +329,32 @@ def test_empty_canvas_holds_no_layer(tmp_path) -> None:
         tool_adapter.close()
         settings.close()
         _APP.processEvents()
+
+
+def test_eraser_cursor_matches_eraser_size(tmp_path, overlay_window_component) -> None:
+    settings, controller, drawing_adapter, tool_adapter = _adapters(tmp_path)
+    surface = OverlaySurface(
+        drawing_adapter, tool_adapter, window_component=overlay_window_component
+    )
+    try:
+        drawing_adapter.toggle_drawing()
+        tool_adapter.select_tool("eraser")
+        tool_adapter.set_size(80)
+        _APP.processEvents()
+
+        window = surface.windows[0]
+        pixmap = window.cursor().pixmap()
+        logical_width = pixmap.width() / pixmap.devicePixelRatio()
+        assert 80 <= logical_width <= 90
+
+        tool_adapter.set_size(20)
+        _APP.processEvents()
+        pixmap = window.cursor().pixmap()
+        logical_width = pixmap.width() / pixmap.devicePixelRatio()
+        assert 20 <= logical_width <= 30
+
+        tool_adapter.select_tool("pen")
+        _APP.processEvents()
+        assert window.cursor().shape() == Qt.CursorShape.CrossCursor
+    finally:
+        _close(surface, settings, drawing_adapter, tool_adapter)
